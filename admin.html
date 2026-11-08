@@ -30,7 +30,7 @@
             if (r && r.ok) window.location.replace(targetUrl);
           })
           .catch(function () {});
-      } else if (window.location.pathname.indexOf('.html') !== -1) {
+      } else if (window.location.port === '8686' && window.location.pathname.indexOf('.html') !== -1) {
         try {
           window.history.replaceState(null, '', '/quantri');
         } catch (e) {}

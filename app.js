@@ -1,9 +1,18 @@
 // Giao lưu cầu lông cuối tuần — Tên miền nội bộ chuẩn Việt Nam: giaoluucaulong.vn
 // Real-time Cross-Browser Synchronization Engine (Chrome, Edge, Firefox, Safari, Brave, Cốc Cốc, Mobile)
 
-const STORAGE_KEY = 'giaoluucaulong_vn_state_v5';
-const SYNC_CHANNEL_NAME = 'giaoluucaulong_vn_sync_v5';
-const CLOUD_DB_TOPIC = 'https://ntfy.sh/giaoluucaulongcuoituan_db_v1';
+const STORAGE_KEY = 'giaoluucaulongcuoituan_state_v6';
+const SYNC_CHANNEL_NAME = 'giaoluucaulongcuoituan_sync_v6';
+const MQTT_TOPIC = 'giaoluucaulongcuoituan/state/v2';
+const MQTT_BROKERS = [
+  'wss://broker.emqx.io:8084/mqtt',
+  'wss://broker.hivemq.com:8884/mqtt'
+];
+const IS_STATIC_CLOUD_HOST =
+  window.location.hostname.indexOf('github.io') !== -1 ||
+  window.location.hostname.indexOf('pages.dev') !== -1 ||
+  window.location.hostname.indexOf('netlify.app') !== -1 ||
+  window.location.hostname.indexOf('vercel.app') !== -1;
 
 // Always connect to the central local sync server even if opened via file:// or custom domain
 const API_BASE = window.location.protocol.startsWith('http')
@@ -54,58 +63,53 @@ function getUpcomingDayISO(targetDayOfWeek) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-// Default initial state (_rev: 0 so server state with _rev >= 1 always wins)
+// Default initial state matching live club_data.json
 function getDefaultState() {
   const defaultISO = '2026-11-14';
   return {
-    _rev: 0,
-    _updatedAt: 0,
+    _rev: 53,
+    _updatedAt: 1794144377966,
+    savedMembers: [
+      { name: 'Thiên Minh', gender: 'M', skill: 'A', type: 'fixed', note: '' },
+      { name: 'Vịt', gender: 'M', skill: 'A', type: 'fixed', note: '' },
+      { name: 'tuyền', gender: 'F', skill: 'B', type: 'fixed', note: '' },
+      { name: 'Hiếu', gender: 'M', skill: 'A', type: 'fixed', note: '' }
+    ],
     settings: {
       clubName: 'Giao lưu cầu lông cuối tuần',
-      domainName: 'giaoluucaulong.vn',
+      domainName: 'giaoluucaulongcuoituan',
       sessionDateISO: defaultISO,
       sessionDate: formatISOToVietnameseDate(defaultISO),
-      sessionTime: '19:00 - 21:00',
-      courtLocation: 'Sân Cầu Lông Phú Thọ (Sân 1, 2, 3)',
-      maxPlayers: 16
+      sessionTime: '18:00 - 20:00',
+      courtLocation: 'Sân Cầu Lông Thanh Yến',
+      maxPlayers: 14
     },
     members: [
-      { id: 'm1', name: 'Minh Tuấn', gender: 'M', skill: 'A', type: 'fixed', extraFee: 0, amountPaid: 80000, paid: true, playDate: 'Thứ 7 · 14/11/2026', note: 'Đánh chính Đôi Nam & Nam Nữ' },
-      { id: 'm2', name: 'Hoàng Long', gender: 'M', skill: 'A', type: 'fixed', extraFee: 0, amountPaid: 80000, paid: true, playDate: 'Thứ 7 · 14/11/2026', note: 'Chủ lực Sân 1' },
-      { id: 'm3', name: 'Đức Anh', gender: 'M', skill: 'B', type: 'fixed', extraFee: 0, amountPaid: 80000, paid: true, playDate: 'Thứ 7 · 14/11/2026', note: 'Đúng giờ 19:00' },
-      { id: 'm4', name: 'Quốc Bảo', gender: 'M', skill: 'B', type: 'fixed', extraFee: 0, amountPaid: 80000, paid: true, playDate: 'Thứ 7 · 14/11/2026', note: '' },
-      { id: 'm5', name: 'Văn Hùng', gender: 'M', skill: 'B', type: 'fixed', extraFee: 0, amountPaid: 50000, paid: false, playDate: 'Thứ 7 · 14/11/2026', note: 'Mới chuyển 50k, còn nợ 30k' },
-      { id: 'm6', name: 'Thanh Tùng', gender: 'M', skill: 'B', type: 'fixed', extraFee: 0, amountPaid: 80000, paid: true, playDate: 'Thứ 7 · 14/11/2026', note: '' },
-      { id: 'm7', name: 'Gia Huy', gender: 'M', skill: 'C', type: 'guest', extraFee: 10000, amountPaid: 0, paid: false, playDate: 'Thứ 7 · 14/11/2026', note: 'Thuê 1 quấn cán (+10k)' },
-      { id: 'm8', name: 'Hải Nam', gender: 'M', skill: 'A', type: 'guest', extraFee: 0, amountPaid: 80000, paid: true, playDate: 'Thứ 7 · 14/11/2026', note: 'Khách mời giao lưu' },
-      { id: 'm9', name: 'Thu Trang', gender: 'F', skill: 'A', type: 'fixed', extraFee: 0, amountPaid: 80000, paid: true, playDate: 'Thứ 7 · 14/11/2026', note: 'Đôi Nữ & Đôi Nam Nữ' },
-      { id: 'm10', name: 'Ngọc Lan', gender: 'F', skill: 'B', type: 'fixed', extraFee: 0, amountPaid: 80000, paid: true, playDate: 'Thứ 7 · 14/11/2026', note: '' },
-      { id: 'm11', name: 'Bảo Ngọc', gender: 'F', skill: 'B', type: 'fixed', extraFee: 0, amountPaid: 40000, paid: false, playDate: 'Thứ 7 · 14/11/2026', note: 'Đã trả 40k tiền mặt' },
-      { id: 'm12', name: 'Khánh Linh', gender: 'F', skill: 'C', type: 'guest', extraFee: 0, amountPaid: 0, paid: false, playDate: 'Thứ 7 · 14/11/2026', note: 'Vãng lai tuần này' }
+      { id: 'm1794139132378', name: 'Thiên Minh', gender: 'M', skill: 'A', type: 'fixed', extraFee: 0, amountPaid: 0, paid: false, playDate: 'Thứ 7 · 14/11/2026', note: '' },
+      { id: 'm1794139135711', name: 'Vịt', gender: 'M', skill: 'A', type: 'fixed', extraFee: 0, amountPaid: 0, paid: false, playDate: 'Thứ 7 · 14/11/2026', note: '' },
+      { id: 'm1794141493235', name: 'tuyền', gender: 'F', skill: 'B', type: 'fixed', extraFee: 0, amountPaid: 0, paid: false, playDate: 'Thứ 7 · 14/11/2026', note: '' },
+      { id: 'm1794141555013', name: 'Hiếu', gender: 'M', skill: 'A', type: 'fixed', extraFee: 0, amountPaid: 0, paid: false, playDate: 'Thứ 7 · 14/11/2026', note: '' }
     ],
     costs: {
-      courtsCount: 3,
-      courtHours: 2,
-      courtRate: 90000,
-      shuttleCount: 12,
-      shuttlePrice: 25000,
-      extraExpenses: [
-        { id: 'ex1', name: 'Trà đá & Nước suối cả đội', amount: 80000 },
-        { id: 'ex2', name: 'Phí gửi xe & vệ sinh sân', amount: 40000 }
-      ],
+      courtsCount: 1,
+      courtHours: 5,
+      courtRate: 130000,
+      shuttleCount: 8,
+      shuttlePrice: 26000,
+      extraExpenses: [],
       splitMode: 'equal',
       roundThousand: true
     },
     matches: [
-      { id: 'T1', round: 'Vòng 1', court: 'Sân 1', category: 'MD', teamA: ['m1', 'm3'], teamB: ['m2', 'm4'], scoreA: 21, scoreB: 17, status: 'done' },
-      { id: 'T2', round: 'Vòng 1', court: 'Sân 2', category: 'WD', teamA: ['m9', 'm12'], teamB: ['m10', 'm11'], scoreA: 21, scoreB: 19, status: 'done' },
-      { id: 'T3', round: 'Vòng 1', court: 'Sân 3', category: 'MD', teamA: ['m8', 'm7'], teamB: ['m5', 'm6'], scoreA: 22, scoreB: 20, status: 'done' },
-      { id: 'T4', round: 'Vòng 2', court: 'Sân 1', category: 'XD', teamA: ['m1', 'm10'], teamB: ['m2', 'm9'], scoreA: null, scoreB: null, status: 'upcoming' },
-      { id: 'T5', round: 'Vòng 2', court: 'Sân 2', category: 'XD', teamA: ['m3', 'm11'], teamB: ['m4', 'm12'], scoreA: null, scoreB: null, status: 'upcoming' },
-      { id: 'T6', round: 'Vòng 2', court: 'Sân 3', category: 'MD', teamA: ['m1', 'm5'], teamB: ['m8', 'm6'], scoreA: null, scoreB: null, status: 'upcoming' },
-      { id: 'T7', round: 'Vòng 3', court: 'Sân 1', category: 'MD', teamA: ['m2', 'm7'], teamB: ['m3', 'm5'], scoreA: null, scoreB: null, status: 'upcoming' },
-      { id: 'T8', round: 'Vòng 3', court: 'Sân 2', category: 'XD', teamA: ['m8', 'm11'], teamB: ['m6', 'm9'], scoreA: null, scoreB: null, status: 'upcoming' },
-      { id: 'T9', round: 'Vòng 3', court: 'Sân 3', category: 'WD', teamA: ['m9', 'm10'], teamB: ['m11', 'm12'], scoreA: null, scoreB: null, status: 'upcoming' }
+      { id: 'T1', round: 'Vòng 1', court: 'Sân 1', category: 'FREE', teamA: ['m1794139135711', 'm1794141493235'], teamB: ['m1794139132378', 'm1794141555013'], scoreA: null, scoreB: null, status: 'upcoming' },
+      { id: 'T2', round: 'Vòng 1', court: 'Sân 2', category: 'FREE', teamA: ['m1794141555013', 'm1794141493235'], teamB: ['m1794139132378', 'm1794139135711'], scoreA: null, scoreB: null, status: 'upcoming' },
+      { id: 'T3', round: 'Vòng 1', court: 'Sân 3', category: 'FREE', teamA: ['m1794141555013', 'm1794141493235'], teamB: ['m1794139132378', 'm1794139135711'], scoreA: null, scoreB: null, status: 'upcoming' },
+      { id: 'T4', round: 'Vòng 2', court: 'Sân 1', category: 'FREE', teamA: ['m1794141555013', 'm1794141493235'], teamB: ['m1794139132378', 'm1794139135711'], scoreA: null, scoreB: null, status: 'upcoming' },
+      { id: 'T5', round: 'Vòng 2', court: 'Sân 2', category: 'FREE', teamA: ['m1794139135711', 'm1794141493235'], teamB: ['m1794139132378', 'm1794141555013'], scoreA: null, scoreB: null, status: 'upcoming' },
+      { id: 'T6', round: 'Vòng 2', court: 'Sân 3', category: 'FREE', teamA: ['m1794139132378', 'm1794141493235'], teamB: ['m1794141555013', 'm1794139135711'], scoreA: null, scoreB: null, status: 'upcoming' },
+      { id: 'T7', round: 'Vòng 3', court: 'Sân 1', category: 'FREE', teamA: ['m1794141555013', 'm1794141493235'], teamB: ['m1794139135711', 'm1794139132378'], scoreA: null, scoreB: null, status: 'upcoming' },
+      { id: 'T8', round: 'Vòng 3', court: 'Sân 2', category: 'FREE', teamA: ['m1794139135711', 'm1794141493235'], teamB: ['m1794139132378', 'm1794141555013'], scoreA: null, scoreB: null, status: 'upcoming' },
+      { id: 'T9', round: 'Vòng 3', court: 'Sân 3', category: 'FREE', teamA: ['m1794141555013', 'm1794141493235'], teamB: ['m1794139132378', 'm1794139135711'], scoreA: null, scoreB: null, status: 'upcoming' }
     ]
   };
 }
@@ -201,10 +205,227 @@ function updateSyncBadgeUI(mode) {
   }
 }
 
-// Save to Server API (/api/state) + Cloud Relay + localStorage + BroadcastChannel
+// ============================================================================
+// REAL-TIME CLOUD WEBSOCKET ENGINE (MQTT Retained State over WSS)
+// Syncs instantly (<100ms) across GitHub Pages, 4G/5G, Wi-Fi, Safari & Chrome
+// ============================================================================
+const activeMqttSockets = [];
+let hasReceivedInitialCloudState = false;
+let lastLocalSaveTimestamp = 0;
+
+function mqttEncodeLength(len) {
+  const out = [];
+  do {
+    let digit = len % 128;
+    len = Math.floor(len / 128);
+    if (len > 0) digit |= 0x80;
+    out.push(digit);
+  } while (len > 0);
+  return out;
+}
+
+function mqttEncodeString(str) {
+  const bytes = new TextEncoder().encode(str);
+  return [(bytes.length >> 8) & 0xff, bytes.length & 0xff, ...bytes];
+}
+
+function buildMqttConnectPacket(clientId) {
+  const body = [
+    ...mqttEncodeString('MQTT'),
+    0x04, // MQTT v3.1.1
+    0x02, // Clean session
+    0x00, 0x3c, // Keep-alive 60s
+    ...mqttEncodeString(clientId)
+  ];
+  return new Uint8Array([0x10, ...mqttEncodeLength(body.length), ...body]);
+}
+
+function buildMqttSubscribePacket(topic, packetId) {
+  const body = [
+    (packetId >> 8) & 0xff,
+    packetId & 0xff,
+    ...mqttEncodeString(topic),
+    0x00 // QoS 0
+  ];
+  return new Uint8Array([0x82, ...mqttEncodeLength(body.length), ...body]);
+}
+
+function buildMqttPublishRetainedPacket(topic, jsonStr) {
+  const topicBytes = mqttEncodeString(topic);
+  const payloadBytes = new TextEncoder().encode(jsonStr);
+  const remLen = topicBytes.length + payloadBytes.length;
+  const header = [0x31, ...mqttEncodeLength(remLen)]; // 0x31 = PUBLISH, Retain=1
+  const packet = new Uint8Array(header.length + remLen);
+  packet.set(header, 0);
+  packet.set(topicBytes, header.length);
+  packet.set(payloadBytes, header.length + topicBytes.length);
+  return packet;
+}
+
+function handleIncomingCloudState(jsonText) {
+  try {
+    const parsed = JSON.parse(jsonText);
+    const remoteState = normalizeStateObject(parsed);
+    if (!remoteState) return;
+
+    const activeEl = document.activeElement;
+    const isEditingTableInput =
+      hasReceivedInitialCloudState &&
+      activeEl &&
+      activeEl.tagName === 'INPUT' &&
+      activeEl.type === 'number' &&
+      activeEl.id !== 'regExtraFee' &&
+      activeEl.id !== 'newExpenseAmount';
+
+    if (isEditingTableInput) return;
+
+    const isDifferent =
+      remoteState._updatedAt !== state._updatedAt ||
+      remoteState._rev !== state._rev;
+
+    const isAcceptable =
+      !hasReceivedInitialCloudState ||
+      remoteState._updatedAt >= lastLocalSaveTimestamp ||
+      remoteState._rev > (state._rev || 0);
+
+    hasReceivedInitialCloudState = true;
+    if (isDifferent && isAcceptable) {
+      state = remoteState;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) {}
+      renderAll();
+    }
+    updateSyncBadgeUI('server');
+  } catch (e) {}
+}
+
+function connectMqttBroker(brokerUrl, index) {
+  let ws = null;
+  let pingTimer = null;
+  let rxBuffer = new Uint8Array(0);
+  const clientId = `glcl_${index}_${Math.random().toString(36).substring(2, 10)}`;
+
+  try {
+    ws = new WebSocket(brokerUrl, 'mqtt');
+    ws.binaryType = 'arraybuffer';
+  } catch (e) {
+    setTimeout(() => connectMqttBroker(brokerUrl, index), 4000);
+    return;
+  }
+
+  const entry = { ws, ready: false, url: brokerUrl };
+  activeMqttSockets[index] = entry;
+
+  ws.onopen = () => {
+    try {
+      ws.send(buildMqttConnectPacket(clientId));
+    } catch (e) {}
+  };
+
+  ws.onmessage = (event) => {
+    const incoming = new Uint8Array(event.data);
+    const combined = new Uint8Array(rxBuffer.length + incoming.length);
+    combined.set(rxBuffer, 0);
+    combined.set(incoming, rxBuffer.length);
+    rxBuffer = combined;
+
+    let offset = 0;
+    while (offset < rxBuffer.length) {
+      if (rxBuffer.length - offset < 2) break;
+      const cmd = rxBuffer[offset];
+      let multiplier = 1;
+      let remLen = 0;
+      let lenBytes = 0;
+      let idx = offset + 1;
+      let completeLen = false;
+
+      while (idx < rxBuffer.length && lenBytes < 4) {
+        const b = rxBuffer[idx++];
+        remLen += (b & 127) * multiplier;
+        multiplier *= 128;
+        lenBytes++;
+        if ((b & 128) === 0) {
+          completeLen = true;
+          break;
+        }
+      }
+      if (!completeLen) break;
+      const packetEnd = idx + remLen;
+      if (rxBuffer.length < packetEnd) break;
+
+      const packetType = cmd & 0xf0;
+      if (packetType === 0x20) {
+        // CONNACK -> Subscribe immediately to retained state topic
+        entry.ready = true;
+        updateSyncBadgeUI('server');
+        try {
+          ws.send(buildMqttSubscribePacket(MQTT_TOPIC, 1));
+        } catch (e) {}
+      } else if (packetType === 0x30) {
+        // PUBLISH -> Extract UTF-8 JSON state
+        const qos = (cmd >> 1) & 0x03;
+        const topicLen = (rxBuffer[idx] << 8) | rxBuffer[idx + 1];
+        let payloadStart = idx + 2 + topicLen;
+        if (qos > 0) payloadStart += 2;
+        if (payloadStart <= packetEnd) {
+          const payloadBytes = rxBuffer.subarray(payloadStart, packetEnd);
+          const jsonText = new TextDecoder('utf-8').decode(payloadBytes);
+          handleIncomingCloudState(jsonText);
+        }
+      }
+      offset = packetEnd;
+    }
+    if (offset > 0) {
+      rxBuffer = rxBuffer.slice(offset);
+    }
+  };
+
+  pingTimer = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN && entry.ready) {
+      try {
+        ws.send(new Uint8Array([0xc0, 0x00])); // PINGREQ
+      } catch (e) {}
+    }
+  }, 25000);
+
+  ws.onclose = () => {
+    entry.ready = false;
+    clearInterval(pingTimer);
+    setTimeout(() => connectMqttBroker(brokerUrl, index), 3500);
+  };
+
+  ws.onerror = () => {
+    try {
+      ws.close();
+    } catch (e) {}
+  };
+}
+
+function initCloudRealtimeSync() {
+  MQTT_BROKERS.forEach((url, idx) => connectMqttBroker(url, idx));
+}
+
+function publishStateToCloudBrokers(stateObj) {
+  const bodyStr = JSON.stringify(stateObj);
+  const packet = buildMqttPublishRetainedPacket(MQTT_TOPIC, bodyStr);
+  let sentCount = 0;
+  activeMqttSockets.forEach(entry => {
+    if (entry && entry.ready && entry.ws && entry.ws.readyState === WebSocket.OPEN) {
+      try {
+        entry.ws.send(packet);
+        sentCount++;
+      } catch (e) {}
+    }
+  });
+  return sentCount > 0;
+}
+
+// Save to Cloud Retained Brokers + Server API (/api/state) + localStorage + BroadcastChannel
 function saveState() {
   state._updatedAt = Date.now();
   state._rev = (Number(state._rev) || 0) + 1;
+  lastLocalSaveTimestamp = state._updatedAt;
 
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -217,8 +438,20 @@ function saveState() {
   }
 
   updateSyncBadgeUI('saving');
-  const bodyStr = JSON.stringify(state);
+  const publishedToCloud = publishStateToCloudBrokers(state);
 
+  if (IS_STATIC_CLOUD_HOST) {
+    if (publishedToCloud) {
+      updateSyncBadgeUI('server');
+    } else {
+      setTimeout(() => {
+        if (publishStateToCloudBrokers(state)) updateSyncBadgeUI('server');
+      }, 800);
+    }
+    return;
+  }
+
+  const bodyStr = JSON.stringify(state);
   fetch(`${API_BASE}/api/state`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Bypass-Tunnel-Reminder': 'true' },
@@ -232,70 +465,36 @@ function saveState() {
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         } catch (e) {}
+        publishStateToCloudBrokers(state);
         updateSyncBadgeUI('server');
       }
     })
     .catch(() => {
-      // Fallback: push directly to Cloud Relay so external networks (4G/5G/other Wi-Fi) always sync
-      fetch(CLOUD_DB_TOPIC, {
-        method: 'POST',
-        body: bodyStr
-      })
-        .then(r => {
-          if (r && r.ok) updateSyncBadgeUI('server');
-          else updateSyncBadgeUI('offline');
-        })
-        .catch(() => updateSyncBadgeUI('offline'));
+      if (publishedToCloud) updateSyncBadgeUI('server');
+      else updateSyncBadgeUI('offline');
     });
 }
 
-async function pullStateFromCloudRelay(isInitial) {
-  try {
-    const res = await fetch(`${CLOUD_DB_TOPIC}/json?poll=1&since=12h&t=${Date.now()}`, { cache: 'no-store' });
-    if (!res.ok) return false;
-    const text = await res.text();
-    const lines = text.trim().split('\n');
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      let env = null;
-      try {
-        env = JSON.parse(line);
-      } catch (e) {
-        continue;
-      }
-      if (!env || env.event !== 'message' || !env.message) continue;
-      let parsedMsg = null;
-      try {
-        parsedMsg = JSON.parse(env.message);
-      } catch (e) {
-        continue;
-      }
-      const remoteState = normalizeStateObject(parsedMsg);
-      if (remoteState) {
-        const isNewer =
-          (isInitial && remoteState._rev >= (state._rev || 0)) ||
-          remoteState._rev > (state._rev || 0);
-        if (isNewer) {
-          state = remoteState;
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-          } catch (e) {}
-          renderAll();
-        }
-        updateSyncBadgeUI('server');
-        return true;
-      }
-    }
-  } catch (e) {}
-  return false;
-}
-
-// Pull shared state from central server (or Cloud Relay fallback on external networks)
+// Pull shared state from central server when running on local/tunnel server
 async function pullStateFromServer(isInitial) {
+  if (IS_STATIC_CLOUD_HOST) {
+    if (isInitial && !hasReceivedInitialCloudState) {
+      try {
+        const jsonRes = await fetch(`./club_data.json?t=${Date.now()}`, { cache: 'no-store' });
+        if (jsonRes.ok && !hasReceivedInitialCloudState) {
+          const fileState = normalizeStateObject(await jsonRes.json());
+          if (fileState && fileState._rev >= (state._rev || 0)) {
+            state = fileState;
+            renderAll();
+          }
+        }
+      } catch (e) {}
+    }
+    return;
+  }
+
   if (isSyncingServer) return;
 
-  // Check if user is actively typing inside a table number input (score or finance input)
   const activeEl = document.activeElement;
   const isEditingTableInput =
     !isInitial &&
@@ -345,11 +544,10 @@ async function pullStateFromServer(isInitial) {
         }
       }
     }
-    const cloudOk = await pullStateFromCloudRelay(isInitial);
-    if (!cloudOk) updateSyncBadgeUI('offline');
   } catch (e) {
-    const cloudOk = await pullStateFromCloudRelay(isInitial);
-    if (!cloudOk) updateSyncBadgeUI('offline');
+    if (!activeMqttSockets.some(s => s && s.ready)) {
+      updateSyncBadgeUI('offline');
+    }
   } finally {
     isSyncingServer = false;
   }
@@ -2000,9 +2198,14 @@ document.addEventListener('DOMContentLoaded', () => {
   updateLiveClock();
   setInterval(updateLiveClock, 1000);
 
-  // Pull authoritative state from central server immediately & poll every 1s
+  // Connect to Real-Time Cloud Retained WebSocket Brokers (<100ms sync across all devices/networks)
+  initCloudRealtimeSync();
+
+  // Pull authoritative state from local server if applicable
   pullStateFromServer(true);
-  setInterval(() => pullStateFromServer(false), 1000);
+  if (!IS_STATIC_CLOUD_HOST) {
+    setInterval(() => pullStateFromServer(false), 1500);
+  }
 
   heroAutoplayInterval = setInterval(() => {
     if (isHeroPlaying) nextHeroSlide();

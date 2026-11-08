@@ -14,8 +14,22 @@
   <link rel="stylesheet" href="styles.css" />
   <script>
     window.PAGE_ROLE = 'user';
-    // Tự động chuyển hướng an toàn từ đường dẫn file:/// cũ sang tên miền giaoluucaulongcuoituan
     (function () {
+      // Hỗ trợ mở trang Admin trên GitHub Pages qua ?admin, ?role=admin, #admin, #quantri
+      var search = window.location.search.toLowerCase();
+      var hash = window.location.hash.toLowerCase();
+      if (
+        search.indexOf('role=admin') !== -1 ||
+        search.indexOf('?admin') !== -1 ||
+        search.indexOf('?quantri') !== -1 ||
+        hash === '#admin' ||
+        hash === '#quantri'
+      ) {
+        window.location.replace('admin.html');
+        return;
+      }
+
+      // Tự động chuyển hướng an toàn từ đường dẫn file:/// cũ sang tên miền giaoluucaulongcuoituan
       var targetUrl = 'http://giaoluucaulongcuoituan.localhost:8686/noibo';
       var checkUrl = 'http://giaoluucaulongcuoituan.localhost:8686/api/state';
       if (
@@ -30,7 +44,7 @@
             if (r && r.ok) window.location.replace(targetUrl);
           })
           .catch(function () {});
-      } else if (window.location.pathname.indexOf('.html') !== -1) {
+      } else if (window.location.port === '8686' && window.location.pathname.indexOf('.html') !== -1) {
         try {
           window.history.replaceState(null, '', '/noibo');
         } catch (e) {}
