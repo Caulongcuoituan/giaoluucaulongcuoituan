@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#060916" />
+  <title>Giao lưu cầu lông cuối tuần — Cổng Thành Viên (User)</title>
+  <!-- Favicon Hình Cầu Lông trên thanh Tab trình duyệt -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231d4ed8'/%3E%3Cpath d='M16 14 L32 42 L48 14 Z' fill='%23ffffff' opacity='0.95'/%3E%3Cpath d='M10 20 L29 44 L36 12 Z' fill='%23e2e8f0'/%3E%3Cpath d='M28 12 L35 44 L54 20 Z' fill='%23cbd5e1'/%3E%3Crect x='23' y='40' width='18' height='5' rx='2' fill='%23f59e0b'/%3E%3Cpath d='M23 45 C23 56, 41 56, 41 45 Z' fill='%23ffffff'/%3E%3C/svg%3E" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="styles.css" />
+  <script>
+    window.PAGE_ROLE = 'user';
+    // Tự động chuyển hướng an toàn từ đường dẫn file:/// cũ sang tên miền nội bộ chuẩn Việt Nam (Cổng 8686 Dual-Stack IPv4/IPv6)
+    (function () {
+      var targetUrl = 'http://noibo.giaoluucaulong.vn.localhost:8686/noibo';
+      var checkUrl = 'http://noibo.giaoluucaulong.vn.localhost:8686/api/state';
+      if (window.location.protocol === 'file:' || window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost' || window.location.port === '8080') {
+        fetch(checkUrl, { method: 'GET', cache: 'no-store' })
+          .then(function (r) {
+            if (r && r.ok) window.location.replace(targetUrl);
+          })
+          .catch(function () {});
+      } else if (window.location.pathname.indexOf('.html') !== -1) {
+        try {
+          window.history.replaceState(null, '', '/noibo');
+        } catch (e) {}
+      }
+    })();
+  </script>
+</head>
+<body class="bg-[#060916] text-slate-100 antialiased selection:bg-blue-500 selection:text-white min-h-screen pb-24">
+
+  <!-- Background ambient glow (desktop only to keep Safari iOS fast) -->
+  <div class="hidden sm:block fixed inset-0 pointer-events-none overflow-hidden z-0">
+    <div class="absolute -top-40 left-1/4 w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-[140px]"></div>
+    <div class="absolute top-1/3 right-1/4 w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[130px]"></div>
+  </div>
+
+  <!-- FLOATING TOP NAVBAR (USER VIEW - MOBILE & DESKTOP OPTIMIZED) -->
+  <header class="sticky top-3 z-40 px-3 sm:px-6 max-w-[1280px] mx-auto mt-3">
+    <nav class="nav-pill bg-[#0b1021]/95 backdrop-blur-xl border border-[#1d284a] rounded-2xl sm:rounded-full px-3.5 sm:px-4 py-2 sm:py-2.5 flex items-center justify-between gap-2 shadow-2xl shadow-black/60">
+      
+      <!-- Brand / Club Logo with Shuttlecock Icon -->
+      <a href="#" onclick="switchTab('overview'); return false;" class="flex items-center gap-2.5 sm:gap-3 group min-w-0">
+        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-800 border border-blue-400/40 flex items-center justify-center shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform shrink-0">
+          <svg class="w-5 h-5 sm:w-6 sm:h-6 text-white" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M14 14L32 42L50 14L40 18L32 12L24 18L14 14Z" fill="#ffffff"/>
+            <path d="M19 22H45" stroke="#1e3a8a" stroke-width="2.5" stroke-linecap="round"/>
+            <path d="M23 30H41" stroke="#1e3a8a" stroke-width="2.5" stroke-linecap="round"/>
+            <rect x="23" y="40" width="18" height="5" rx="2" fill="#fbbf24"/>
+            <path d="M23 45C23 55 41 55 41 45H23Z" fill="#f8fafc"/>
+          </svg>
+        </div>
+        <div class="leading-tight min-w-0">
+          <div class="font-extrabold text-xs sm:text-sm tracking-wide text-white truncate" id="clubNameDisplay">Giao lưu cầu lông cuối tuần</div>
+          <div class="text-[10px] sm:text-[11px] text-slate-400 font-medium flex items-center gap-1.5 truncate" id="sessionWeekLabel">
+            <span class="text-sky-400 font-semibold whitespace-nowrap">👤 Thành viên</span>
+            <span class="text-slate-600">·</span>
+            <span id="syncStatusBadge" class="text-emerald-400 font-semibold truncate">● Đã đồng bộ</span>
+          </div>
+        </div>
+      </a>
+
+      <!-- Center Nav Links -->
+      <div class="hidden lg:flex items-center gap-1 xl:gap-2 text-sm font-semibold shrink-0">
+        <button onclick="switchTab('overview')" data-tab="overview" class="nav-tab active px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap">Tổng quan</button>
+        <button onclick="switchTab('register')" data-tab="register" class="nav-tab px-3.5 py-1.5 rounded-full transition-all flex items-center gap-1.5 whitespace-nowrap">
+          <span>Đăng ký tham gia</span>
+          <span id="navMemberCountBadge" class="text-[11px] px-1.5 py-0.2 bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-full">0</span>
+        </button>
+        <button onclick="switchTab('matches')" data-tab="matches" class="nav-tab px-3.5 py-1.5 rounded-full transition-all flex items-center gap-1.5 whitespace-nowrap">
+          <span>Lịch đấu & Nhập tỉ số</span>
+          <span id="navMatchCountBadge" class="text-[11px] px-1.5 py-0.2 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-full">0</span>
+        </button>
+        <button onclick="switchTab('costs')" data-tab="costs" class="nav-tab px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap">Chi phí buổi đánh</button>
+        <button onclick="switchTab('standings')" data-tab="standings" class="nav-tab px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap">BXH</button>
+        <button onclick="switchTab('rules')" data-tab="rules" class="nav-tab px-3.5 py-1.5 rounded-full transition-all whitespace-nowrap">Thể lệ</button>
+      </div>
+
+      <!-- Right Info: Live Clock & Session Pill -->
+      <div class="flex items-center gap-2 shrink-0">
+        <div class="hidden xl:flex items-center gap-1.5 text-xs font-medium text-slate-300 bg-[#111936]/70 px-3 py-1.5 rounded-full border border-[#1f2b52] whitespace-nowrap">
+          <span id="liveClock" class="font-bold text-white tabular-nums">16:59:28</span>
+          <span class="text-slate-500">·</span>
+          <span id="liveDate" class="text-slate-400">CN, 08/11</span>
+        </div>
+
+        <button onclick="switchTab('register')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#1a1814] border border-amber-500/40 text-amber-300 text-[11px] sm:text-xs font-semibold hover:bg-amber-500/10 transition-colors whitespace-nowrap shrink-0">
+          <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0"></span>
+          <span id="navNextSessionPill">Cuối tuần</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Mobile Nav Bar -->
+    <div class="flex lg:hidden items-center gap-1.5 overflow-x-auto py-2 mt-2 no-scrollbar">
+      <button onclick="switchTab('overview')" data-tab="overview" class="nav-tab active shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#0b1021] border border-[#1d284a]">Tổng quan</button>
+      <button onclick="switchTab('register')" data-tab="register" class="nav-tab shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#0b1021] border border-[#1d284a]">Đăng ký tham gia</button>
+      <button onclick="switchTab('matches')" data-tab="matches" class="nav-tab shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#0b1021] border border-[#1d284a]">Lịch đấu & Nhập tỉ số</button>
+      <button onclick="switchTab('costs')" data-tab="costs" class="nav-tab shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#0b1021] border border-[#1d284a]">Chi phí buổi đánh</button>
+      <button onclick="switchTab('standings')" data-tab="standings" class="nav-tab shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#0b1021] border border-[#1d284a]">BXH</button>
+      <button onclick="switchTab('rules')" data-tab="rules" class="nav-tab shrink-0 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#0b1021] border border-[#1d284a]">Thể lệ</button>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="relative z-10 max-w-[1280px] mx-auto px-4 sm:px-6 mt-5 space-y-6">
+
+    <!-- HERO BANNER -->
+    <section class="hero-card relative rounded-[28px] overflow-hidden border border-[#20336b] shadow-2xl">
+      <svg class="court-lines-svg absolute right-0 bottom-0 w-[68%] h-[88%] pointer-events-none opacity-25" viewBox="0 0 800 450" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M120 110 L680 75 L790 420 L40 440 Z" stroke="#60A5FA" stroke-width="1.5"/>
+        <path d="M155 108 L710 430" stroke="#60A5FA" stroke-width="1"/>
+        <path d="M645 77 L80 438" stroke="#60A5FA" stroke-width="1"/>
+        <path d="M90 220 L725 180" stroke="#60A5FA" stroke-width="1.2"/>
+        <path d="M60 365 L770 335" stroke="#60A5FA" stroke-width="1"/>
+        <path d="M400 92 L415 430" stroke="#60A5FA" stroke-width="1.5" stroke-dasharray="6 6"/>
+      </svg>
+
+      <!-- Badminton Racket & Shuttlecock Illustration -->
+      <div class="hidden md:block absolute right-8 lg:right-14 top-1/2 -translate-y-1/2 w-[260px] h-[340px] pointer-events-none select-none">
+        <svg viewBox="0 0 280 360" fill="none" xmlns="http://www.w3.org/2000/svg" class="w-full h-full drop-shadow-[0_20px_35px_rgba(0,0,0,0.65)]">
+          <g transform="rotate(14 140 180)">
+            <ellipse cx="145" cy="115" rx="68" ry="86" stroke="url(#racketFrame)" stroke-width="8" fill="rgba(15, 32, 87, 0.25)"/>
+            <ellipse cx="145" cy="115" rx="62" ry="80" stroke="#60a5fa" stroke-width="1.5" stroke-opacity="0.5"/>
+            <g stroke="#93c5fd" stroke-width="0.9" stroke-opacity="0.45">
+              <line x1="95" y1="55" x2="95" y2="175"/>
+              <line x1="107" y1="42" x2="107" y2="188"/>
+              <line x1="119" y1="35" x2="119" y2="195"/>
+              <line x1="131" y1="31" x2="131" y2="199"/>
+              <line x1="145" y1="30" x2="145" y2="200"/>
+              <line x1="159" y1="31" x2="159" y2="199"/>
+              <line x1="171" y1="35" x2="171" y2="195"/>
+              <line x1="183" y1="42" x2="183" y2="188"/>
+              <line x1="195" y1="55" x2="195" y2="175"/>
+              <line x1="92" y1="60" x2="198" y2="60"/>
+              <line x1="84" y1="74" x2="206" y2="74"/>
+              <line x1="80" y1="88" x2="210" y2="88"/>
+              <line x1="78" y1="102" x2="212" y2="102"/>
+              <line x1="77" y1="115" x2="213" y2="115"/>
+              <line x1="78" y1="128" x2="212" y2="128"/>
+              <line x1="80" y1="142" x2="210" y2="142"/>
+              <line x1="84" y1="156" x2="206" y2="156"/>
+              <line x1="92" y1="170" x2="198" y2="170"/>
+            </g>
+            <path d="M126 196 L145 232 L164 196" stroke="url(#racketFrame)" stroke-width="6" stroke-linecap="round"/>
+            <line x1="145" y1="201" x2="145" y2="310" stroke="url(#shaftGrad)" stroke-width="6" stroke-linecap="round"/>
+            <rect x="138" y="305" width="14" height="55" rx="4" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+            <g transform="translate(118, 70) rotate(-18)">
+              <path d="M8 8 L28 45 L48 8 Z" fill="#e2e8f0" opacity="0.9"/>
+              <path d="M2 12 L25 46 L35 6 Z" fill="#f8fafc"/>
+              <path d="M20 6 L31 46 L54 12 Z" fill="#cbd5e1"/>
+              <path d="M10 10 L46 10" stroke="#94a3b8" stroke-width="1.5"/>
+              <path d="M15 24 L41 24" stroke="#64748b" stroke-width="1.5"/>
+              <rect x="18" y="41" width="20" height="5" rx="1.5" fill="#1d4ed8"/>
+              <path d="M18 45 C18 57, 38 57, 38 45 Z" fill="#f1f5f9"/>
+            </g>
+          </g>
+          <defs>
+            <linearGradient id="racketFrame" x1="77" y1="29" x2="213" y2="201" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#60a5fa"/>
+              <stop offset="50%" stop-color="#2563eb"/>
+              <stop offset="100%" stop-color="#1d4ed8"/>
+            </linearGradient>
+            <linearGradient id="shaftGrad" x1="145" y1="201" x2="145" y2="310" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#3b82f6"/>
+              <stop offset="100%" stop-color="#93c5fd"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+
+      <!-- Hero Content -->
+      <div class="relative z-10 p-6 sm:p-10 lg:p-12 max-w-3xl">
+        <div class="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-[#0d1633]/90 border border-amber-500/40 text-amber-300 text-xs font-semibold mb-5">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          <span id="heroBadgeText">Buổi đánh cuối tuần · Thứ 7 · 14/11/2026 (19:00 - 21:00)</span>
+        </div>
+
+        <h1 id="heroHeadline" class="text-3xl sm:text-5xl lg:text-[52px] font-black tracking-tight text-white leading-[1.1] mb-4">
+          Giao lưu cầu lông<br/>cuối tuần
+        </h1>
+
+        <p id="heroSubtext" class="text-slate-300/90 text-sm sm:text-base font-medium mb-7 max-w-2xl">
+          Sân Cầu Lông Phú Thọ (Sân 1, 2, 3) · Thể thức chuẩn quốc tế 21 điểm (cách biệt 2 điểm khi hòa 20-20).
+        </p>
+
+        <!-- 4 Highlight Stat Boxes -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-7">
+          <div onclick="switchTab('register')" class="cursor-pointer bg-[#0b1536]/85 hover:bg-[#101f4c] border border-[#233876] rounded-2xl p-3.5 transition-all">
+            <div class="text-xl sm:text-2xl font-extrabold text-white tracking-tight" id="heroStatMembers">12 / 16</div>
+            <div class="text-[11px] text-slate-400 mt-0.5 font-medium" id="heroStatMembersSub">8 Nam · 4 Nữ đã ĐK</div>
+          </div>
+          <div onclick="switchTab('matches')" class="cursor-pointer bg-[#0b1536]/85 hover:bg-[#101f4c] border border-[#233876] rounded-2xl p-3.5 transition-all">
+            <div class="text-xl sm:text-2xl font-extrabold text-white tracking-tight" id="heroStatMatches">9 trận</div>
+            <div class="text-[11px] text-slate-400 mt-0.5 font-medium" id="heroStatMatchesSub">Chạm 21 điểm BWF</div>
+          </div>
+          <div onclick="switchTab('costs')" class="cursor-pointer bg-[#0b1536]/85 hover:bg-[#101f4c] border border-[#233876] rounded-2xl p-3.5 transition-all">
+            <div class="text-xl sm:text-2xl font-extrabold text-white tracking-tight" id="heroStatTotalCost">960.000đ</div>
+            <div class="text-[11px] text-slate-400 mt-0.5 font-medium" id="heroStatTotalCostSub">Sân + Cầu + Phụ phí</div>
+          </div>
+          <div onclick="switchTab('costs')" class="cursor-pointer bg-[#0b1536]/85 hover:bg-[#101f4c] border border-[#233876] rounded-2xl p-3.5 transition-all">
+            <div class="text-xl sm:text-2xl font-extrabold text-emerald-400 tracking-tight" id="heroStatPerPerson">80.000đ</div>
+            <div class="text-[11px] text-slate-400 mt-0.5 font-medium" id="heroStatPerPersonSub">Mỗi thành viên / buổi</div>
+          </div>
+        </div>
+
+        <!-- CTA Buttons -->
+        <div class="flex flex-wrap items-center gap-3">
+          <button onclick="openQuickRegisterModal()" class="px-6 py-3 rounded-full bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold text-sm flex items-center gap-2 shadow-lg shadow-blue-600/30 transition-all">
+            <span>+ Đăng ký tên tham gia ngay</span>
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"/></svg>
+          </button>
+          <button onclick="switchTab('matches')" class="px-5 py-3 rounded-full bg-[#13204a]/90 hover:bg-[#1b2d66] border border-[#2c4494] text-slate-100 font-bold text-sm transition-all">
+            🏸 Lịch đấu & Nhập tỉ số
+          </button>
+          <button onclick="switchTab('costs')" class="px-5 py-3 rounded-full bg-[#13204a]/90 hover:bg-[#1b2d66] border border-[#2c4494] text-slate-100 font-bold text-sm transition-all">
+            Xem chi phí buổi đánh
+          </button>
+        </div>
+
+        <!-- Carousel Dots -->
+        <div class="flex items-center gap-2 mt-6">
+          <button onclick="setHeroSlide(0)" id="heroDot0" class="h-1.5 w-8 rounded-full bg-white transition-all"></button>
+          <button onclick="setHeroSlide(1)" id="heroDot1" class="h-1.5 w-2 rounded-full bg-white/30 hover:bg-white/60 transition-all"></button>
+          <button onclick="setHeroSlide(2)" id="heroDot2" class="h-1.5 w-2 rounded-full bg-white/30 hover:bg-white/60 transition-all"></button>
+        </div>
+      </div>
+
+      <!-- Bottom-right Carousel Control Pill -->
+      <div class="hidden sm:flex items-center gap-4 absolute right-6 bottom-6 z-20 bg-[#081029]/90 border border-[#1e2f63] rounded-full px-4 py-2 text-slate-300">
+        <button onclick="prevHeroSlide()" class="hover:text-white transition-colors" title="Slide trước">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/></svg>
+        </button>
+        <button onclick="toggleHeroAutoplay()" id="heroPauseBtn" class="hover:text-white transition-colors text-xs font-bold" title="Tạm dừng / Chạy">
+          II
+        </button>
+        <button onclick="nextHeroSlide()" class="hover:text-white transition-colors" title="Slide tiếp">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 1: OVERVIEW (BENTO GRID)               -->
+    <!-- ========================================== -->
+    <div id="tab-overview" class="tab-panel space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        
+        <div class="lg:col-span-6 bg-[#0b1021] border border-[#192342] rounded-[24px] p-6 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-sm font-bold text-slate-200">Trận đấu tâm điểm / Tiếp theo</span>
+              <span class="text-xs font-medium text-slate-400" id="overviewFeaturedMeta">Sân 1 · Cuối tuần</span>
+            </div>
+
+            <div id="overviewFeaturedMatchBox" class="bg-[#0f162e] border border-[#1c2952] rounded-2xl p-6 my-2"></div>
+          </div>
+
+          <div class="mt-4 pt-4 border-t border-[#182240]">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Danh sách trận trong tuần (Chạm 21 điểm)</span>
+              <button onclick="switchTab('matches')" class="text-xs font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-4">Nhập tỉ số & Xem tất cả →</button>
+            </div>
+            <div id="overviewMatchListMini" class="space-y-2"></div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-3 bg-[#0b1021] border border-[#192342] rounded-[24px] p-6 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-5">
+              <span class="text-sm font-bold text-slate-200">Tiến độ buổi đánh</span>
+              <span class="text-xs font-bold text-slate-400" id="overviewProgressFraction">0/0</span>
+            </div>
+
+            <div class="flex items-center gap-5 my-4">
+              <div class="relative w-24 h-24 shrink-0">
+                <svg class="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="40" stroke="#182342" stroke-width="10" fill="none" />
+                  <circle id="overviewProgressCircle" cx="50" cy="50" r="40" stroke="#3b82f6" stroke-width="10" stroke-linecap="round" fill="none" stroke-dasharray="251.2" stroke-dashoffset="180" class="transition-all duration-700" />
+                </svg>
+              </div>
+              <div>
+                <div class="text-3xl font-black text-white" id="overviewCompletedCount">3</div>
+                <div class="text-xs text-slate-400 leading-snug mt-0.5">trận đã đấu trên<br/><span id="overviewTotalMatchesText">9</span> trận tuần này</div>
+              </div>
+            </div>
+
+            <div class="bg-[#0f172f] border border-[#1d2b56] rounded-xl p-3.5 mt-4 text-xs text-slate-300 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Đôi Nam (MD):</span>
+                <span class="font-bold text-blue-400" id="overviewMDCount">0 trận</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Đôi Nam Nữ (XD):</span>
+                <span class="font-bold text-purple-400" id="overviewXDCount">0 trận</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-slate-400">Đôi Nữ (WD):</span>
+                <span class="font-bold text-pink-400" id="overviewWDCount">0 trận</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-5 pt-4 border-t border-[#182240]">
+            <div class="flex items-center justify-between text-xs mb-1.5">
+              <span class="text-slate-400">Đã thu / Tổng chi phí:</span>
+              <span class="font-bold text-emerald-400" id="overviewPaidProgress">0đ</span>
+            </div>
+            <div class="w-full h-2 bg-[#151f3d] rounded-full overflow-hidden">
+              <div id="overviewPaidBar" class="h-full bg-emerald-500 rounded-full transition-all duration-500" style="width: 50%"></div>
+            </div>
+            <div class="flex items-center justify-between text-[11px] mt-1.5 text-rose-400 font-semibold">
+              <span>Tổng tiền nợ còn thiếu:</span>
+              <span id="overviewDebtTotal">0đ</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-3 bg-[#0b1021] border border-[#192342] rounded-[24px] p-6 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <span class="text-sm font-bold text-slate-200">Thành viên tuần này</span>
+              <button onclick="switchTab('register')" class="text-xs font-semibold text-slate-300 hover:text-white underline underline-offset-4">Đăng ký</button>
+            </div>
+
+            <div id="overviewMemberList" class="space-y-2.5 max-h-[310px] overflow-y-auto pr-1 custom-scrollbar"></div>
+          </div>
+
+          <button onclick="openQuickRegisterModal()" class="w-full mt-4 py-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-xs font-bold text-blue-300 transition-colors">
+            + Đăng ký tên tham gia
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ======================================================== -->
+    <!-- TAB 2: ĐĂNG KÝ THÀNH VIÊN (CHỌN NGÀY BẰNG LỊCH & NHẬP TAY) -->
+    <!-- ======================================================== -->
+    <div id="tab-register" class="tab-panel hidden space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <div class="lg:col-span-4">
+          <div class="bg-[#0b1021] border border-[#192342] rounded-[24px] p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-lg font-extrabold text-white">Đăng ký tham gia</h2>
+              <span class="text-xs px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30 font-semibold" id="regSlotCounter">12/16 chỗ</span>
+            </div>
+            <p class="text-xs text-slate-400 mb-4">
+              Chọn ngày đánh cuối tuần trên lịch và nhập họ tên của bạn để đăng ký vào danh sách.
+            </p>
+
+            <form id="memberRegisterForm" onsubmit="handleRegisterSubmit(event)" class="space-y-4">
+              <!-- Chọn ngày đánh bằng Lịch (Date Picker) -->
+              <div>
+                <label class="block text-xs font-semibold text-amber-300 mb-1.5">📅 Chọn ngày đánh cuối tuần (Trên lịch) *</label>
+                <input
+                  type="date"
+                  id="regPlayDate"
+                  required
+                  onclick="openNativeDatePicker(this)"
+                  onchange="updateRegDatePreview(this.value)"
+                  class="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1730] border border-amber-500/40 text-sm font-bold text-white focus:outline-none focus:border-amber-400"
+                />
+                <div class="flex items-center justify-between mt-1.5">
+                  <span id="regPlayDateFormatted" class="text-[11px] text-amber-300 font-semibold">Thứ 7 · 14/11/2026</span>
+                  <div class="flex gap-1.5">
+                    <button type="button" onclick="pickUpcomingWeekendForReg(6)" class="px-2 py-0.5 rounded bg-[#152247] hover:bg-blue-600/30 text-[10px] font-bold text-blue-300 border border-blue-500/30">Thứ 7 này</button>
+                    <button type="button" onclick="pickUpcomingWeekendForReg(0)" class="px-2 py-0.5 rounded bg-[#152247] hover:bg-blue-600/30 text-[10px] font-bold text-blue-300 border border-blue-500/30">Chủ Nhật này</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ĐĂNG KÝ NHANH TỪ DANH SÁCH ĐÃ LƯU TUẦN TRƯỚC -->
+              <div class="p-3.5 rounded-2xl bg-[#0f1730] border border-blue-500/30 space-y-2.5">
+                <div class="flex items-center justify-between gap-2">
+                  <span class="text-xs font-extrabold text-blue-300 flex items-center gap-1.5">
+                    <span>⚡ Đăng ký nhanh (Đã lưu tuần trước)</span>
+                  </span>
+                  <span id="savedMembersCountBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-bold whitespace-nowrap">0 người</span>
+                </div>
+                <p class="text-[11px] text-slate-400 leading-snug">
+                  Chạm vào tên của bạn đã lưu từ tuần trước để đăng ký ngay 1 chạm (hoặc nhập tên mới bên dưới):
+                </p>
+                <div id="savedMembersQuickList" class="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1 custom-scrollbar"></div>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1.5">Họ và tên thành viên *</label>
+                <input
+                  type="text"
+                  id="regName"
+                  list="savedMembersDatalist"
+                  oninput="handleSavedMemberNameInput(this.value)"
+                  required
+                  placeholder="Nhập họ và tên (VD: Nguyễn Văn A)"
+                  class="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1730] border border-[#223263] text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                />
+                <datalist id="savedMembersDatalist"></datalist>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-300 mb-1.5">Giới tính *</label>
+                  <select id="regGender" class="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1730] border border-[#223263] text-sm text-white focus:outline-none focus:border-blue-500">
+                    <option value="M">Nam (Đôi Nam / Nam Nữ)</option>
+                    <option value="F">Nữ (Đôi Nữ / Nam Nữ)</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-300 mb-1.5">Trình độ (Level)</label>
+                  <select id="regSkill" class="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1730] border border-[#223263] text-sm text-white focus:outline-none focus:border-blue-500">
+                    <option value="A">Hạng A (Tốt / Chủ lực)</option>
+                    <option value="B" selected>Hạng B (Khá / Phong trào)</option>
+                    <option value="C">Hạng C (Trung bình / Mới)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1.5">Hình thức tham gia</label>
+                <select id="regType" class="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1730] border border-[#223263] text-sm text-white focus:outline-none focus:border-blue-500">
+                  <option value="fixed">Thành viên cố định</option>
+                  <option value="guest">Khách vãng lai (Theo buổi)</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-slate-300 mb-1.5">Ghi chú (Khung giờ đến, nội dung muốn đánh...)</label>
+                <input type="text" id="regNote" placeholder="VD: Đến lúc 19h15, thích đánh Đôi Nam Nữ" class="w-full px-3.5 py-2.5 rounded-xl bg-[#0f1730] border border-[#223263] text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" />
+              </div>
+
+              <button type="submit" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-lg shadow-blue-600/30 transition-all">
+                + Đăng ký tên vào danh sách tuần
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div class="lg:col-span-8 bg-[#0b1021] border border-[#192342] rounded-[24px] p-6">
+          <div class="flex flex-wrap items-center justify-between gap-4 mb-5">
+            <div>
+              <h2 class="text-lg font-extrabold text-white">Danh sách thành viên đăng ký tuần này</h2>
+              <p class="text-xs text-slate-400 mt-0.5" id="regSummarySubtitle">Tổng cộng 12 thành viên</p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <select id="filterMemberGender" onchange="renderRegistrationTab()" class="px-3 py-1.5 rounded-xl bg-[#101833] border border-[#223263] text-xs font-semibold text-slate-200">
+                <option value="ALL">Tất cả giới tính</option>
+                <option value="M">Chỉ Nam</option>
+                <option value="F">Chỉ Nữ</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+            <table class="w-full min-w-[580px] text-left border-collapse">
+              <thead>
+                <tr class="border-b border-[#1b2749] text-[11px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">
+                  <th class="py-3 px-2.5 sm:px-3">#</th>
+                  <th class="py-3 px-2.5 sm:px-3">Thành viên</th>
+                  <th class="py-3 px-2.5 sm:px-3">Giới tính</th>
+                  <th class="py-3 px-2.5 sm:px-3">Trình độ</th>
+                  <th class="py-3 px-2.5 sm:px-3">Số trận</th>
+                  <th class="py-3 px-2.5 sm:px-3">Phải đóng</th>
+                  <th class="py-3 px-2.5 sm:px-3">Đã trả / Tiền nợ</th>
+                </tr>
+              </thead>
+              <tbody id="registeredMembersTableBody" class="divide-y divide-[#15203d] text-sm"></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 3: LỊCH & SƠ ĐỒ TRẬN ĐẤU (USER ĐƯỢC QUYỀN ĐIỀU CHỈNH TỈ SỐ)            -->
+    <!-- ========================================================================= -->
+    <div id="tab-matches" class="tab-panel hidden space-y-6">
+      <div class="bg-[#0b1021] border border-[#192342] rounded-[24px] p-6">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-xl font-extrabold text-white flex items-center gap-2.5">
+              <span>Danh sách các trận đấu & Cập nhật tỉ số</span>
+              <span class="text-xs px-2.5 py-1 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold" id="matchTabTotalBadge">9 trận</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-1">
+              Thành viên có thể trực tiếp nhập hoặc điều chỉnh tỉ số sau mỗi trận đấu (Luật quốc tế: Chạm <strong>21 điểm</strong>, hòa <strong>20–20</strong> cách biệt <strong>2 điểm</strong>).
+            </p>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-4 mt-5 pt-4 border-t border-[#182240]">
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="setMatchCategoryFilter('ALL')" data-mfilter="ALL" class="match-filter-btn active px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all">
+              Tất cả nội dung
+            </button>
+            <button onclick="setMatchCategoryFilter('MD')" data-mfilter="MD" class="match-filter-btn px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+              <span>Đôi Nam (MD)</span>
+            </button>
+            <button onclick="setMatchCategoryFilter('XD')" data-mfilter="XD" class="match-filter-btn px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-purple-400"></span>
+              <span>Đôi Nam Nữ (XD)</span>
+            </button>
+            <button onclick="setMatchCategoryFilter('WD')" data-mfilter="WD" class="match-filter-btn px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-pink-400"></span>
+              <span>Đôi Nữ (WD)</span>
+            </button>
+          </div>
+          <div class="text-xs text-emerald-400 font-semibold">✏️ Thành viên được quyền nhập & điều chỉnh tỉ số trực tiếp vào ô điểm.</div>
+        </div>
+      </div>
+
+      <div id="matchesGridContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+
+      <div class="bg-[#0b1021] border border-[#192342] rounded-[24px] p-5">
+        <h3 class="text-sm font-bold text-slate-200 mb-3">Thống kê số trận của từng thành viên</h3>
+        <div id="playerMatchFrequencyBar" class="flex flex-wrap gap-2"></div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 4: CHI PHÍ BUỔI ĐÁNH (USER VIEW - READ ONLY, NO FINANCIAL EDITING)     -->
+    <!-- ========================================================================= -->
+    <div id="tab-costs" class="tab-panel hidden space-y-6">
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="bg-[#0b1021] border border-[#192342] rounded-2xl p-4">
+          <div class="text-[11px] text-slate-400 font-medium">Tổng chi phí buổi đánh</div>
+          <div class="text-xl font-black text-white mt-1" id="billTotalCost">960.000đ</div>
+          <div class="text-[11px] text-slate-500 mt-0.5" id="userCostBreakdownMini">Sân + Cầu + Phụ phí</div>
+        </div>
+        <div class="bg-[#0b1021] border border-[#192342] rounded-2xl p-4">
+          <div class="text-[11px] text-slate-400 font-medium">Trung bình / thành viên</div>
+          <div class="text-xl font-black text-blue-400 mt-1" id="billAvgPerPerson">80.000đ</div>
+        </div>
+        <div class="bg-[#0b1021] border border-emerald-500/30 rounded-2xl p-4">
+          <div class="text-[11px] text-emerald-300 font-semibold">Tổng số tiền đã trả</div>
+          <div class="text-xl font-black text-emerald-400 mt-1" id="billCollectedAmount">0đ</div>
+        </div>
+        <div class="bg-[#0b1021] border border-rose-500/30 rounded-2xl p-4">
+          <div class="text-[11px] text-rose-300 font-semibold">Tổng tiền nợ (Còn thiếu)</div>
+          <div class="text-xl font-black text-rose-400 mt-1" id="billRemainingAmount">0đ</div>
+        </div>
+      </div>
+
+      <div class="bg-[#0b1021] border border-[#192342] rounded-[24px] p-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h3 class="text-base font-extrabold text-white">Bảng công khai chi phí, số tiền đã trả & tiền nợ</h3>
+            <p class="text-xs text-slate-400">Thông tin tài chính được Quản trị viên (Admin) cập nhật minh bạch sau mỗi buổi đánh.</p>
+          </div>
+          <span class="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold">
+            🔒 Chế độ xem dành cho Thành viên
+          </span>
+        </div>
+
+        <div class="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+          <table class="w-full min-w-[600px] text-left border-collapse">
+            <thead>
+              <tr class="border-b border-[#1b2749] text-[11px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">
+                <th class="py-3 px-2.5">#</th>
+                <th class="py-3 px-2.5">Thành viên</th>
+                <th class="py-3 px-2.5">Tiền sân+cầu</th>
+                <th class="py-3 px-2.5">Phụ phí</th>
+                <th class="py-3 px-2.5">Tổng phải đóng</th>
+                <th class="py-3 px-2.5 text-emerald-300">Số tiền đã trả</th>
+                <th class="py-3 px-2.5 text-rose-300">Tiền nợ</th>
+              </tr>
+            </thead>
+            <tbody id="costMemberBreakdownBody" class="divide-y divide-[#15203d] text-sm"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 5: BẢNG XẾP HẠNG TRONG TUẦN                                           -->
+    <!-- ========================================================================= -->
+    <div id="tab-standings" class="tab-panel hidden space-y-6">
+      <div class="bg-[#0b1021] border border-[#192342] rounded-[24px] p-6">
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-5">
+          <div>
+            <h2 class="text-xl font-extrabold text-white">Bảng Xếp Hạng Phong Độ Tuần Này</h2>
+            <p class="text-xs text-slate-400 mt-1">Tự động tính điểm dựa trên kết quả các trận Đôi Nam, Đôi Nữ và Đôi Nam Nữ đã hoàn thành.</p>
+          </div>
+          <button onclick="switchTab('matches')" class="px-4 py-2 rounded-xl bg-[#142044] hover:bg-[#1c2d5e] border border-[#2b4287] text-xs font-bold text-blue-300">
+            Nhập / Điều chỉnh tỉ số →
+          </button>
+        </div>
+
+        <div class="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+          <table class="w-full min-w-[580px] text-left border-collapse">
+            <thead>
+              <tr class="border-b border-[#1b2749] text-[11px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">
+                <th class="py-3 px-3 sm:px-4">Hạng</th>
+                <th class="py-3 px-3 sm:px-4">Vận động viên</th>
+                <th class="py-3 px-3 sm:px-4">Giới tính / Hạng</th>
+                <th class="py-3 px-3 sm:px-4">Số trận đã đấu</th>
+                <th class="py-3 px-3 sm:px-4">Thắng - Thua</th>
+                <th class="py-3 px-3 sm:px-4">Hiệu số điểm</th>
+                <th class="py-3 px-3 sm:px-4 text-right">Điểm phong độ</th>
+              </tr>
+            </thead>
+            <tbody id="standingsTableBody" class="divide-y divide-[#15203d] text-sm"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- TAB 6: THỂ LỆ THI ĐẤU QUỐC TẾ 21 ĐIỂM                                     -->
+    <!-- ========================================================================= -->
+    <div id="tab-rules" class="tab-panel hidden space-y-6">
+      <div class="bg-[#0b1021] border border-[#192342] rounded-[24px] p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <h2 class="text-lg font-extrabold text-white">Thể lệ thi đấu & Quy định Giao lưu cầu lông cuối tuần</h2>
+          <span class="px-3 py-1 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300 text-xs font-bold">Luật BWF 21 Điểm</span>
+        </div>
+
+        <ul class="space-y-3.5 text-sm text-slate-300">
+          <li class="p-4 rounded-2xl bg-[#0f1730] border border-[#223468] flex items-start gap-3">
+            <span class="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-black text-xs mt-0.5 shrink-0">ĐIỂM SỐ</span>
+            <div class="space-y-1">
+              <div class="font-extrabold text-white">Thể thức 21 điểm Quốc tế (Luật BWF) & Quyền cập nhật tỷ số:</div>
+              <p class="text-xs text-slate-300 leading-relaxed">
+                • <strong>Thành viên (User) được quyền nhập và điều chỉnh tỷ số trận đấu</strong> ngay sau khi trận đấu kết thúc.<br/>
+                • Điểm số kết thúc trận đấu tiêu chuẩn là <strong>21 điểm</strong> (ví dụ: 21–15, 21–18, 21–19).<br/>
+                • <strong>Khi tỷ số hòa 20–20 (Deuce):</strong> Áp dụng thể thức thi đấu quốc tế — trận đấu tiếp tục cho đến khi một bên dẫn trước với <strong>khoảng cách 2 điểm</strong> (ví dụ: <strong>22–20, 23–21, 24–22...</strong>).<br/>
+                • <strong>Điểm chạm tối đa (30 điểm):</strong> Nếu hai đội giằng co đến tỷ số <strong>29–29</strong>, đội ghi điểm thứ <strong>30</strong> trước sẽ giành chiến thắng (<strong>30–29</strong>).
+              </p>
+            </div>
+          </li>
+
+          <li class="p-4 rounded-2xl bg-[#0f1730] border border-[#1f2e5c] flex items-start gap-3">
+            <span class="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 font-black text-xs mt-0.5 shrink-0">GHÉP CẶP</span>
+            <div>
+              <div class="font-bold text-white">Phân chia 3 nội dung: Đôi Nam, Đôi Nam Nữ, Đôi Nữ</div>
+              <p class="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                Các thành viên đăng ký trong tuần sẽ được sắp xếp thi đấu cân bằng trình độ (Hạng A, B, C) và phân bổ đều số lượt ra sân ở cả 3 nội dung: <strong>Đôi Nam (MD)</strong>, <strong>Đôi Nam Nữ (XD)</strong> và <strong>Đôi Nữ (WD)</strong>.
+              </p>
+            </div>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toastNotification" class="fixed top-20 right-6 z-50 hidden px-4 py-3 rounded-2xl bg-[#101c3d] border border-blue-500/50 text-white text-xs font-bold shadow-2xl flex items-center gap-2 max-w-md">
+    <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+    <span id="toastMessage">Đã cập nhật!</span>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "domainName": "giaoluucaulongcuoituan",
+  "publicBaseUrl": "https://8a6dc3e8e24979.lhr.life",
+  "ltBaseUrl": "https://giaoluucaulong.loca.lt",
+  "lanIp": "192.168.1.10",
+  "publicWanIp": "14.169.250.230",
+  "pcUserUrl": "http://giaoluucaulongcuoituan.localhost:8686/noibo",
+  "pcAdminUrl": "http://giaoluucaulongcuoituan.localhost:8686/quantri",
+  "lanUserUrl": "http://giaoluucaulongcuoituan.192-168-1-10.sslip.io:8686/noibo",
+  "lanAdminUrl": "http://giaoluucaulongcuoituan.192-168-1-10.sslip.io:8686/quantri",
+  "publicUserUrl": "https://8a6dc3e8e24979.lhr.life/giaoluucaulongcuoituan",
+  "publicAdminUrl": "https://8a6dc3e8e24979.lhr.life/quantri-giaoluucaulongcuoituan",
+  "directHttpsUserUrl": "https://8a6dc3e8e24979.lhr.life/giaoluucaulongcuoituan",
+  "directHttpsAdminUrl": "https://8a6dc3e8e24979.lhr.life/quantri-giaoluucaulongcuoituan",
+  "shortUserUrl": "",
+  "shortAdminUrl": ""
+}

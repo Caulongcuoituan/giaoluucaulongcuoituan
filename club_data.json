@@ -1,0 +1,258 @@
+{
+  "_rev": 53,
+  "_updatedAt": 1794144377966,
+  "savedMembers": [
+    {
+      "name": "Thiên Minh",
+      "gender": "M",
+      "skill": "A",
+      "type": "fixed",
+      "note": ""
+    },
+    {
+      "name": "Vịt",
+      "gender": "M",
+      "skill": "A",
+      "type": "fixed",
+      "note": ""
+    },
+    {
+      "name": "tuyền",
+      "gender": "F",
+      "skill": "B",
+      "type": "fixed",
+      "note": ""
+    },
+    {
+      "name": "Hiếu",
+      "gender": "M",
+      "skill": "A",
+      "type": "fixed",
+      "note": ""
+    }
+  ],
+  "settings": {
+    "clubName": "Giao lưu cầu lông cuối tuần",
+    "domainName": "giaoluucaulong.vn",
+    "sessionDateISO": "2026-11-14",
+    "sessionDate": "Thứ 7 · 14/11/2026",
+    "sessionTime": "18:00 - 20:00",
+    "courtLocation": "Sân Cầu Lông Thanh Yến",
+    "maxPlayers": 14
+  },
+  "members": [
+    {
+      "id": "m1794139132378",
+      "name": "Thiên Minh",
+      "gender": "M",
+      "skill": "A",
+      "type": "fixed",
+      "extraFee": 0,
+      "amountPaid": 0,
+      "paid": false,
+      "playDate": "Thứ 7 · 14/11/2026",
+      "note": ""
+    },
+    {
+      "id": "m1794139135711",
+      "name": "Vịt",
+      "gender": "M",
+      "skill": "A",
+      "type": "fixed",
+      "extraFee": 0,
+      "amountPaid": 0,
+      "paid": false,
+      "playDate": "Thứ 7 · 14/11/2026",
+      "note": ""
+    },
+    {
+      "id": "m1794141493235",
+      "name": "tuyền",
+      "gender": "F",
+      "skill": "B",
+      "type": "fixed",
+      "extraFee": 0,
+      "amountPaid": 0,
+      "paid": false,
+      "playDate": "Thứ 7 · 14/11/2026",
+      "note": ""
+    },
+    {
+      "id": "m1794141555013",
+      "name": "Hiếu",
+      "gender": "M",
+      "skill": "A",
+      "type": "fixed",
+      "extraFee": 0,
+      "amountPaid": 0,
+      "paid": false,
+      "playDate": "Thứ 7 · 14/11/2026",
+      "note": ""
+    }
+  ],
+  "costs": {
+    "courtsCount": 1,
+    "courtHours": 5,
+    "courtRate": 130000,
+    "shuttleCount": 8,
+    "shuttlePrice": 26000,
+    "extraExpenses": [],
+    "splitMode": "equal",
+    "roundThousand": true
+  },
+  "matches": [
+    {
+      "id": "T1",
+      "round": "Vòng 1",
+      "court": "Sân 1",
+      "category": "FREE",
+      "teamA": [
+        "m1794139135711",
+        "m1794141493235"
+      ],
+      "teamB": [
+        "m1794139132378",
+        "m1794141555013"
+      ],
+      "scoreA": null,
+      "scoreB": null,
+      "status": "upcoming"
+    },
+    {
+      "id": "T2",
+      "round": "Vòng 1",
+      "court": "Sân 2",
+      "category": "FREE",
+      "teamA": [
+        "m1794141555013",
+        "m1794141493235"
+      ],
+      "teamB": [
+        "m1794139132378",
+        "m1794139135711"
+      ],
+      "scoreA": null,
+      "scoreB": null,
+      "status": "upcoming"
+    },
+    {
+      "id": "T3",
+      "round": "Vòng 1",
+      "court": "Sân 3",
+      "category": "FREE",
+      "teamA": [
+        "m1794141555013",
+        "m1794141493235"
+      ],
+      "teamB": [
+        "m1794139132378",
+        "m1794139135711"
+      ],
+      "scoreA": null,
+      "scoreB": null,
+      "status": "upcoming"
+    },
+    {
+      "id": "T4",
+      "round": "Vòng 2",
+      "court": "Sân 1",
+      "category": "FREE",
+      "teamA": [
+        "m1794141555013",
+        "m1794141493235"
+      ],
+      "teamB": [
+        "m1794139132378",
+        "m1794139135711"
+      ],
+      "scoreA": null,
+      "scoreB": null,
+      "status": "upcoming"
+    },
+    {
+      "id": "T5",
+      "round": "Vòng 2",
+      "court": "Sân 2",
+      "category": "FREE",
+      "teamA": [
+        "m1794139135711",
+        "m1794141493235"
+      ],
+      "teamB": [
+        "m1794139132378",
+        "m1794141555013"
+      ],
+      "scoreA": null,
+      "scoreB": null,
+      "status": "upcoming"
+    },
+    {
+      "id": "T6",
+      "round": "Vòng 2",
+      "court": "Sân 3",
+      "category": "FREE",
+      "teamA": [
+        "m1794139132378",
+        "m1794141493235"
+      ],
+      "teamB": [
+        "m1794141555013",
+        "m1794139135711"
+      ],
+      "scoreA": null,
+      "scoreB": null,
+      "status": "upcoming"
+    },
+    {
+      "id": "T7",
+      "round": "Vòng 3",
+      "court": "Sân 1",
+      "category": "FREE",
+      "teamA": [
+        "m1794141555013",
+        "m1794141493235"
+      ],
+      "teamB": [
+        "m1794139135711",
+        "m1794139132378"
+      ],
+      "scoreA": null,
+      "scoreB": null,
+      "status": "upcoming"
+    },
+    {
+      "id": "T8",
+      "round": "Vòng 3",
+      "court": "Sân 2",
+      "category": "FREE",
+      "teamA": [
+        "m1794139135711",
+        "m1794141493235"
+      ],
+      "teamB": [
+        "m1794139132378",
+        "m1794141555013"
+      ],
+      "scoreA": null,
+      "scoreB": null,
+      "status": "upcoming"
+    },
+    {
+      "id": "T9",
+      "round": "Vòng 3",
+      "court": "Sân 3",
+      "category": "FREE",
+      "teamA": [
+        "m1794141555013",
+        "m1794141493235"
+      ],
+      "teamB": [
+        "m1794139132378",
+        "m1794139135711"
+      ],
+      "scoreA": null,
+      "scoreB": null,
+      "status": "upcoming"
+    }
+  ]
+}
