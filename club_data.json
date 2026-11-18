@@ -1,6 +1,6 @@
 {
-  "_rev": 53,
-  "_updatedAt": 1794144377966,
+  "_rev": 55,
+  "_updatedAt": 1794153154045,
   "savedMembers": [
     {
       "name": "Thiên Minh",
@@ -27,6 +27,20 @@
       "name": "Hiếu",
       "gender": "M",
       "skill": "A",
+      "type": "fixed",
+      "note": ""
+    },
+    {
+      "name": "Chip",
+      "gender": "M",
+      "skill": "C",
+      "type": "fixed",
+      "note": ""
+    },
+    {
+      "name": "Heo Con",
+      "gender": "M",
+      "skill": "C",
       "type": "fixed",
       "note": ""
     }
@@ -88,6 +102,30 @@
       "paid": false,
       "playDate": "Thứ 7 · 14/11/2026",
       "note": ""
+    },
+    {
+      "id": "m1794149184961",
+      "name": "Chip",
+      "gender": "M",
+      "skill": "C",
+      "type": "fixed",
+      "extraFee": 0,
+      "amountPaid": 0,
+      "paid": false,
+      "playDate": "Thứ 7 · 14/11/2026",
+      "note": ""
+    },
+    {
+      "id": "m1794153154045",
+      "name": "Heo Con",
+      "gender": "M",
+      "skill": "C",
+      "type": "fixed",
+      "extraFee": 0,
+      "amountPaid": 0,
+      "paid": false,
+      "playDate": "Thứ 7 · 14/11/2026",
+      "note": ""
     }
   ],
   "costs": {
@@ -100,6 +138,7 @@
     "splitMode": "equal",
     "roundThousand": true
   },
+  "debtLogs": [],
   "matches": [
     {
       "id": "T1",

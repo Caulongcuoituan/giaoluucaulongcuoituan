@@ -478,7 +478,11 @@
             </div>
           </div>
 
-          <div class="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+          <!-- Danh sách thẻ gọn trên Điện thoại (Hiển thị ngay Phải trả & Tiền nợ, không cần kéo ngang) -->
+          <div id="registeredMembersMobileList" class="sm:hidden space-y-2"></div>
+
+          <!-- Bảng đầy đủ trên Máy tính / Tablet -->
+          <div class="hidden sm:block overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
             <table class="w-full min-w-[580px] text-left border-collapse">
               <thead>
                 <tr class="border-b border-[#1b2749] text-[11px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">
@@ -549,44 +553,50 @@
     <!-- ========================================================================= -->
     <!-- TAB 4: CHI PHÍ BUỔI ĐÁNH (USER VIEW - READ ONLY, NO FINANCIAL EDITING)     -->
     <!-- ========================================================================= -->
-    <div id="tab-costs" class="tab-panel hidden space-y-6">
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div class="bg-[#0b1021] border border-[#192342] rounded-2xl p-4">
-          <div class="text-[11px] text-slate-400 font-medium">Tổng chi phí buổi đánh</div>
-          <div class="text-xl font-black text-white mt-1" id="billTotalCost">960.000đ</div>
-          <div class="text-[11px] text-slate-500 mt-0.5" id="userCostBreakdownMini">Sân + Cầu + Phụ phí</div>
+    <div id="tab-costs" class="tab-panel hidden space-y-4 sm:space-y-6">
+      <div class="grid grid-cols-4 gap-1.5 sm:gap-3">
+        <div class="bg-[#0b1021] border border-[#192342] rounded-xl sm:rounded-2xl p-2 sm:p-4">
+          <div class="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate">Tổng chi</div>
+          <div class="text-xs sm:text-xl font-black text-white mt-0.5 sm:mt-1 truncate" id="billTotalCost">960.000đ</div>
         </div>
-        <div class="bg-[#0b1021] border border-[#192342] rounded-2xl p-4">
-          <div class="text-[11px] text-slate-400 font-medium">Trung bình / thành viên</div>
-          <div class="text-xl font-black text-blue-400 mt-1" id="billAvgPerPerson">80.000đ</div>
+        <div class="bg-[#0b1021] border border-[#192342] rounded-xl sm:rounded-2xl p-2 sm:p-4">
+          <div class="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate">Mỗi người</div>
+          <div class="text-xs sm:text-xl font-black text-blue-400 mt-0.5 sm:mt-1 truncate" id="billAvgPerPerson">80.000đ</div>
         </div>
-        <div class="bg-[#0b1021] border border-emerald-500/30 rounded-2xl p-4">
-          <div class="text-[11px] text-emerald-300 font-semibold">Tổng số tiền đã trả</div>
-          <div class="text-xl font-black text-emerald-400 mt-1" id="billCollectedAmount">0đ</div>
+        <div class="bg-[#0b1021] border border-emerald-500/30 rounded-xl sm:rounded-2xl p-2 sm:p-4">
+          <div class="text-[10px] sm:text-[11px] text-emerald-300 font-semibold truncate">Đã trả</div>
+          <div class="text-xs sm:text-xl font-black text-emerald-400 mt-0.5 sm:mt-1 truncate" id="billCollectedAmount">0đ</div>
         </div>
-        <div class="bg-[#0b1021] border border-rose-500/30 rounded-2xl p-4">
-          <div class="text-[11px] text-rose-300 font-semibold">Tổng tiền nợ (Còn thiếu)</div>
-          <div class="text-xl font-black text-rose-400 mt-1" id="billRemainingAmount">0đ</div>
+        <div class="bg-[#0b1021] border border-rose-500/40 rounded-xl sm:rounded-2xl p-2 sm:p-4">
+          <div class="text-[10px] sm:text-[11px] text-rose-300 font-semibold truncate">Tổng nợ</div>
+          <div class="text-xs sm:text-xl font-black text-rose-400 mt-0.5 sm:mt-1 truncate" id="billRemainingAmount">0đ</div>
         </div>
       </div>
 
-      <div class="bg-[#0b1021] border border-[#192342] rounded-[24px] p-6">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div class="bg-[#0b1021] border border-[#192342] rounded-2xl sm:rounded-[24px] p-3.5 sm:p-6">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
           <div>
-            <h3 class="text-base font-extrabold text-white">Bảng công khai chi phí, số tiền đã trả & tiền nợ</h3>
-            <p class="text-xs text-slate-400">Thông tin tài chính được Quản trị viên (Admin) cập nhật minh bạch sau mỗi buổi đánh.</p>
+            <h3 class="text-sm sm:text-base font-extrabold text-white">Danh sách Số tiền phải trả · Đã trả · Tiền nợ</h3>
+            <p class="text-[11px] sm:text-xs text-slate-400" id="userCostBreakdownMini">Sân + Cầu + Phụ phí</p>
           </div>
-          <span class="px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 text-xs font-semibold">
-            🔒 Chế độ xem dành cho Thành viên
+          <span class="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 text-[10px] sm:text-xs font-semibold">
+            🔒 Chưa trả xếp đầu · Đã trả xếp cuối
           </span>
         </div>
 
-        <div class="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+        <!-- Thanh trạng thái sắp xếp Chưa trả (đầu) / Đã trả (cuối) -->
+        <div id="costSortStatusBanner" class="mb-3 flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[#0f1730] border border-[#1f2e5c] text-[11px]"></div>
+
+        <!-- GIAO DIỆN ĐIỆN THOẠI (HIỂN THỊ TRỰC TIẾP PHẢI TRẢ & TIỀN NỢ, KHÔNG CẦN KÉO NGANG) -->
+        <div id="costMemberMobileList" class="sm:hidden space-y-2"></div>
+
+        <!-- GIAO DIỆN MÁY TÍNH / TABLET -->
+        <div class="hidden sm:block overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
           <table class="w-full min-w-[600px] text-left border-collapse">
             <thead>
               <tr class="border-b border-[#1b2749] text-[11px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">
                 <th class="py-3 px-2.5">#</th>
-                <th class="py-3 px-2.5">Thành viên</th>
+                <th class="py-3 px-2.5">Thành viên & Ngày đánh</th>
                 <th class="py-3 px-2.5">Tiền sân+cầu</th>
                 <th class="py-3 px-2.5">Phụ phí</th>
                 <th class="py-3 px-2.5">Tổng phải đóng</th>
@@ -597,6 +607,30 @@
             <tbody id="costMemberBreakdownBody" class="divide-y divide-[#15203d] text-sm"></tbody>
           </table>
         </div>
+      </div>
+
+      <!-- SỔ GHI NỢ THEO NGÀY ĐÁNH (CHẾ ĐỘ XEM CÔNG KHAI CHO THÀNH VIÊN) -->
+      <div class="bg-[#0b1021] border border-rose-500/30 rounded-2xl sm:rounded-[24px] p-3.5 sm:p-6 space-y-3.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-sm sm:text-base font-extrabold text-white">📅 Sổ Ghi Nợ Theo Ngày Đánh</h3>
+              <span id="debtLogTotalUnpaidBadge" class="px-2.5 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[11px] font-extrabold">Nợ: 0đ</span>
+            </div>
+            <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5">Tra cứu các khoản nợ theo từng ngày đánh. Khoản chưa trả được xếp lên đầu.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <select id="debtLogDateFilter" onchange="renderDebtByDateSection()" class="px-2.5 py-1.5 rounded-xl bg-[#0f1730] border border-[#243569] text-xs font-bold text-white">
+              <option value="ALL">Tất cả ngày đánh</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Tổng hợp nợ tích lũy theo từng người -->
+        <div id="debtLogMemberSummaryPills" class="flex flex-wrap gap-1.5"></div>
+
+        <!-- Danh sách chi tiết các khoản nợ theo ngày đánh -->
+        <div id="debtLogListContainer" class="space-y-2"></div>
       </div>
     </div>
 
@@ -679,6 +713,6 @@
     <span id="toastMessage">Đã cập nhật!</span>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20261118_v3"></script>
 </body>
 </html>

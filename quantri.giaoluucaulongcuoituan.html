@@ -30,7 +30,7 @@
             if (r && r.ok) window.location.replace(targetUrl);
           })
           .catch(function () {});
-      } else if (window.location.pathname.indexOf('.html') !== -1) {
+      } else if (window.location.port === '8686' && window.location.pathname.indexOf('.html') !== -1) {
         try {
           window.history.replaceState(null, '', '/quantri');
         } catch (e) {}
@@ -506,7 +506,11 @@
             </div>
           </div>
 
-          <div class="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+          <!-- Danh sách thẻ gọn trên Điện thoại (Hiển thị ngay Phải trả & Tiền nợ, không cần kéo ngang) -->
+          <div id="registeredMembersMobileList" class="sm:hidden space-y-2"></div>
+
+          <!-- Bảng đầy đủ trên Máy tính / Tablet -->
+          <div class="hidden sm:block overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
             <table class="w-full min-w-[620px] text-left border-collapse">
               <thead>
                 <tr class="border-b border-[#1b2749] text-[11px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">
@@ -610,43 +614,212 @@
     <!-- ========================================================================= -->
     <!-- TAB 4: QUẢN LÝ TÀI CHÍNH, SỐ TIỀN ĐÃ TRẢ & TIỀN NỢ (ADMIN)                 -->
     <!-- ========================================================================= -->
-    <div id="tab-costs" class="tab-panel hidden space-y-6">
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+    <div id="tab-costs" class="tab-panel hidden space-y-4 sm:space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6">
         
-        <div class="lg:col-span-4 space-y-5">
-          <div class="bg-[#0b1021] border border-[#192342] rounded-[24px] p-6 space-y-5">
-            <div class="flex items-center justify-between">
+        <!-- ƯU TIÊN HIỂN THỊ SỐ 1 TRÊN ĐIỆN THOẠI: TỔNG QUAN NỢ & DANH SÁCH PHẢI TRẢ / TIỀN NỢ -->
+        <div class="order-1 lg:order-2 lg:col-span-8 space-y-3.5 sm:space-y-5">
+          <!-- Thanh 4 chỉ số thu gọn trên 1 hàng ngang ở điện thoại -->
+          <div class="grid grid-cols-4 gap-1.5 sm:gap-3">
+            <div class="bg-[#0b1021] border border-[#192342] rounded-xl sm:rounded-2xl p-2 sm:p-4">
+              <div class="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate">Tổng chi</div>
+              <div class="text-xs sm:text-xl font-black text-white mt-0.5 sm:mt-1 truncate" id="billTotalCost">960.000đ</div>
+            </div>
+            <div class="bg-[#0b1021] border border-[#192342] rounded-xl sm:rounded-2xl p-2 sm:p-4">
+              <div class="text-[10px] sm:text-[11px] text-slate-400 font-medium truncate">Mỗi người</div>
+              <div class="text-xs sm:text-xl font-black text-blue-400 mt-0.5 sm:mt-1 truncate" id="billAvgPerPerson">80.000đ</div>
+            </div>
+            <div class="bg-[#0b1021] border border-emerald-500/30 rounded-xl sm:rounded-2xl p-2 sm:p-4">
+              <div class="text-[10px] sm:text-[11px] text-emerald-300 font-semibold truncate">Đã trả</div>
+              <div class="text-xs sm:text-xl font-black text-emerald-400 mt-0.5 sm:mt-1 truncate" id="billCollectedAmount">0đ</div>
+            </div>
+            <div class="bg-[#0b1021] border border-rose-500/40 rounded-xl sm:rounded-2xl p-2 sm:p-4">
+              <div class="text-[10px] sm:text-[11px] text-rose-300 font-semibold truncate">Tổng nợ</div>
+              <div class="text-xs sm:text-xl font-black text-rose-400 mt-0.5 sm:mt-1 truncate" id="billRemainingAmount">0đ</div>
+            </div>
+          </div>
+
+          <!-- Bảng / Danh sách Số tiền phải trả, Đã trả & Tiền nợ -->
+          <div class="bg-[#0b1021] border border-[#192342] rounded-2xl sm:rounded-[24px] p-3.5 sm:p-6">
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
               <div>
-                <h2 class="text-lg font-extrabold text-white">Cấu hình chi phí buổi đánh</h2>
-                <p class="text-xs text-amber-300">🛡️ Quyền Admin: Tự động tính & chia tiền</p>
+                <h3 class="text-sm sm:text-base font-extrabold text-white">Danh sách Phải trả · Đã trả · Tiền nợ</h3>
+                <p class="text-[11px] sm:text-xs text-slate-400">Ưu tiên xếp <strong class="text-rose-300">Chưa trả tiền lên đầu</strong> và <strong class="text-emerald-300">Đã trả tiền xuống cuối</strong>.</p>
               </div>
-              <span class="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold" id="costTotalBadge">960.000đ</span>
+              <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                <button onclick="generateWeeklyMatches(true)" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-[11px] sm:text-xs font-bold transition-colors flex items-center gap-1" title="Chuyển sang tuần kế tiếp, tự động lưu & cộng dồn tiền nợ của những người chưa trả từ tuần cũ">
+                  <span>📅 Tạo tuần mới (Lưu nợ cũ)</span>
+                </button>
+                <button onclick="recordAllUnpaidToDebtLog()" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-[11px] sm:text-xs font-bold transition-colors flex items-center gap-1" title="Ghi nợ tất cả thành viên chưa đóng tiền vào Sổ nợ theo ngày đánh">
+                  <span>📌 Ghi sổ nợ ngày</span>
+                </button>
+                <button onclick="markAllPaid(true)" class="px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-[11px] sm:text-xs font-bold transition-colors">
+                  ✓ Tất cả trả đủ
+                </button>
+                <button onclick="copyBillSummaryToClipboard()" class="px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] sm:text-xs font-bold transition-colors flex items-center gap-1">
+                  <span>📋 Copy Zalo</span>
+                </button>
+              </div>
             </div>
 
-            <!-- 1. Tiền Sân -->
-            <div class="bg-[#0f1730] border border-[#1f2e5c] rounded-2xl p-4 space-y-3">
+            <!-- Thanh trạng thái sắp xếp Chưa trả (đầu) / Đã trả (cuối) -->
+            <div id="costSortStatusBanner" class="mb-3 flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[#0f1730] border border-[#1f2e5c] text-[11px]"></div>
+
+            <!-- GIAO DIỆN ĐIỆN THOẠI (HIỂN THỊ TRỰC TIẾP PHẢI TRẢ & TIỀN NỢ, KHÔNG CẦN KÉO NGANG) -->
+            <div id="costMemberMobileList" class="sm:hidden space-y-2"></div>
+
+            <!-- GIAO DIỆN MÁY TÍNH / TABLET -->
+            <div class="hidden sm:block overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+              <table class="w-full min-w-[660px] text-left border-collapse">
+                <thead>
+                  <tr class="border-b border-[#1b2749] text-[11px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">
+                    <th class="py-3 px-2.5">#</th>
+                    <th class="py-3 px-2.5">Thành viên & Ngày đánh</th>
+                    <th class="py-3 px-2.5">Tiền sân+cầu</th>
+                    <th class="py-3 px-2.5">Phụ phí</th>
+                    <th class="py-3 px-2.5">Tổng phải đóng</th>
+                    <th class="py-3 px-2.5 text-emerald-300">Số tiền đã trả</th>
+                    <th class="py-3 px-2.5 text-rose-300">Tiền nợ</th>
+                    <th class="py-3 px-2.5 text-right">Thao tác nhanh</th>
+                  </tr>
+                </thead>
+                <tbody id="costMemberBreakdownBody" class="divide-y divide-[#15203d] text-sm"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- SỔ GHI NỢ THEO NGÀY ĐÁNH (ADMIN QUẢN LÝ & LƯU NỢ THEO NGÀY) -->
+          <div class="bg-[#0b1021] border border-rose-500/30 rounded-2xl sm:rounded-[24px] p-3.5 sm:p-6 space-y-3.5">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div class="flex items-center gap-2">
+                  <h3 class="text-sm sm:text-base font-extrabold text-white">📅 Sổ Ghi Nợ Theo Ngày Đánh</h3>
+                  <span id="debtLogTotalUnpaidBadge" class="px-2.5 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-[11px] font-extrabold">Nợ: 0đ</span>
+                </div>
+                <p class="text-[11px] sm:text-xs text-slate-400 mt-0.5">Lưu nợ theo từng ngày đánh (không bị mất khi sang tuần mới). Chưa trả xếp trên, đã trả xếp dưới.</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <select id="debtLogDateFilter" onchange="renderDebtByDateSection()" class="px-2.5 py-1.5 rounded-xl bg-[#0f1730] border border-[#243569] text-xs font-bold text-white">
+                  <option value="ALL">Tất cả ngày đánh</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Form ghi nợ nhanh theo ngày đánh -->
+            <form onsubmit="handleAddDebtByDateSubmit(event)" class="p-3 rounded-2xl bg-[#0f1730] border border-[#1f2e5c] space-y-2.5">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-amber-300">➕ Thêm khoản ghi nợ theo ngày đánh</span>
+                <button type="button" onclick="fillAvgCostToDebtForm()" class="text-[11px] font-bold text-blue-300 hover:text-blue-200 underline">
+                  Điền mức chia mỗi người
+                </button>
+              </div>
+              <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                <div class="sm:col-span-3">
+                  <label class="block text-[10px] text-slate-400 mb-1">Ngày đánh</label>
+                  <input
+                    type="date"
+                    id="debtLogDateInput"
+                    onclick="openNativeDatePicker(this)"
+                    class="w-full px-2.5 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-xs font-bold text-white"
+                  />
+                </div>
+                <div class="sm:col-span-3">
+                  <label class="block text-[10px] text-slate-400 mb-1">Thành viên nợ</label>
+                  <input
+                    type="text"
+                    id="debtLogMemberName"
+                    list="savedMembersDatalist"
+                    placeholder="Chọn hoặc nhập tên..."
+                    required
+                    class="w-full px-2.5 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-xs font-bold text-white"
+                  />
+                </div>
+                <div class="sm:col-span-3">
+                  <label class="block text-[10px] text-slate-400 mb-1">Số tiền nợ (đ)</label>
+                  <input
+                    type="number"
+                    id="debtLogAmountInput"
+                    inputmode="numeric"
+                    step="5000"
+                    min="1000"
+                    placeholder="VD: 80000"
+                    required
+                    class="w-full px-2.5 py-2 rounded-xl bg-[#090e1f] border border-rose-500/40 text-xs font-extrabold text-rose-300"
+                  />
+                </div>
+                <div class="sm:col-span-3 flex flex-col justify-end">
+                  <label class="block text-[10px] text-slate-400 mb-1">Ghi chú (tùy chọn)</label>
+                  <div class="flex items-center gap-1.5">
+                    <input
+                      type="text"
+                      id="debtLogNoteInput"
+                      placeholder="Sân + cầu, nước..."
+                      class="w-full px-2.5 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-xs text-white"
+                    />
+                    <button type="submit" class="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-extrabold whitespace-nowrap shrink-0">
+                      + Ghi nợ
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </form>
+
+            <!-- Tổng hợp nợ tích lũy theo từng người -->
+            <div id="debtLogMemberSummaryPills" class="flex flex-wrap gap-1.5"></div>
+
+            <!-- Danh sách chi tiết các khoản nợ theo ngày đánh -->
+            <div id="debtLogListContainer" class="space-y-2"></div>
+          </div>
+        </div>
+
+        <!-- CẤU HÌNH CHI PHÍ SÂN (SỐ GIỜ FLOAT), CẦU & PHỤ PHÍ -->
+        <div class="order-2 lg:order-1 lg:col-span-4 space-y-4">
+          <div class="bg-[#0b1021] border border-[#192342] rounded-2xl sm:rounded-[24px] p-4 sm:p-6 space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-base sm:text-lg font-extrabold text-white">Cấu hình chi phí buổi đánh</h2>
+                <p class="text-[11px] sm:text-xs text-amber-300">🛡️ Hỗ trợ nhập số giờ lẻ (VD: 1.5, 2.5 giờ)</p>
+              </div>
+              <span class="px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold" id="costTotalBadge">960.000đ</span>
+            </div>
+
+            <!-- 1. Tiền Sân (Hỗ trợ số giờ/sân dạng Float) -->
+            <div class="bg-[#0f1730] border border-[#1f2e5c] rounded-2xl p-3.5 space-y-2.5">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-bold uppercase tracking-wider text-blue-300">🏟️ 1. Tiền sân cầu lông</span>
                 <span class="text-sm font-extrabold text-white" id="courtCostSubtotal">540.000đ</span>
               </div>
-              <div class="grid grid-cols-3 gap-2.5">
-                <div>
-                  <label class="block text-[11px] text-slate-400 mb-1">Số sân</label>
-                  <input type="number" id="costCourtsCount" min="1" max="20" value="3" oninput="handleCostInputChange()" class="w-full px-3 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-sm font-bold text-white" />
+              <div class="grid grid-cols-12 gap-2">
+                <div class="col-span-3">
+                  <label class="block text-[11px] text-slate-400 mb-1 whitespace-nowrap">Số sân</label>
+                  <input type="number" id="costCourtsCount" min="1" max="20" value="1" oninput="handleCostInputChange()" class="w-full px-2.5 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-sm font-bold text-white text-center" />
                 </div>
-                <div>
-                  <label class="block text-[11px] text-slate-400 mb-1">Số giờ/sân</label>
-                  <input type="number" id="costCourtHours" min="0.5" step="0.5" value="2" oninput="handleCostInputChange()" class="w-full px-3 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-sm font-bold text-white" />
+                <div class="col-span-5">
+                  <label class="block text-[11px] text-amber-300 font-semibold mb-1 whitespace-nowrap">Số giờ/sân (lẻ)</label>
+                  <div class="flex items-center gap-1">
+                    <button type="button" onclick="adjustCourtHours(-0.5)" class="px-2 py-2 rounded-xl bg-[#162247] hover:bg-[#1f3063] text-white text-xs font-bold shrink-0">-0.5</button>
+                    <input
+                      type="text"
+                      inputmode="decimal"
+                      id="costCourtHours"
+                      value="5"
+                      placeholder="1.5, 2.5"
+                      oninput="handleCostInputChange(false)"
+                      onchange="handleCostInputChange(true)"
+                      class="w-full text-center px-1.5 py-2 rounded-xl bg-[#090e1f] border border-amber-500/50 text-sm font-extrabold text-amber-300 focus:outline-none focus:border-amber-400"
+                    />
+                    <button type="button" onclick="adjustCourtHours(0.5)" class="px-2 py-2 rounded-xl bg-[#162247] hover:bg-[#1f3063] text-white text-xs font-bold shrink-0">+0.5</button>
+                  </div>
                 </div>
-                <div>
-                  <label class="block text-[11px] text-slate-400 mb-1">Giá 1 giờ (đ)</label>
-                  <input type="number" id="costCourtRate" step="5000" value="90000" oninput="handleCostInputChange()" class="w-full px-3 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-sm font-bold text-white" />
+                <div class="col-span-4">
+                  <label class="block text-[11px] text-slate-400 mb-1 whitespace-nowrap">Giá 1 giờ (đ)</label>
+                  <input type="number" id="costCourtRate" step="5000" value="130000" oninput="handleCostInputChange()" class="w-full px-2.5 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-sm font-bold text-white" />
                 </div>
               </div>
             </div>
 
             <!-- 2. Tiền Cầu -->
-            <div class="bg-[#0f1730] border border-[#1f2e5c] rounded-2xl p-4 space-y-3">
+            <div class="bg-[#0f1730] border border-[#1f2e5c] rounded-2xl p-3.5 space-y-2.5">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-bold uppercase tracking-wider text-amber-300">🏸 2. Tiền cầu sử dụng</span>
                 <span class="text-sm font-extrabold text-white" id="shuttleCostSubtotal">300.000đ</span>
@@ -656,22 +829,22 @@
                   <label class="block text-[11px] text-slate-400 mb-1">Số quả cầu đã dùng</label>
                   <div class="flex items-center gap-1">
                     <button type="button" onclick="adjustShuttleCount(-1)" class="px-2.5 py-2 rounded-xl bg-[#162247] hover:bg-[#1f3063] text-white font-bold">-</button>
-                    <input type="number" id="costShuttleCount" min="0" value="12" oninput="handleCostInputChange()" class="w-full text-center px-2 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-sm font-bold text-white" />
+                    <input type="number" id="costShuttleCount" min="0" value="8" oninput="handleCostInputChange()" class="w-full text-center px-2 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-sm font-bold text-white" />
                     <button type="button" onclick="adjustShuttleCount(1)" class="px-2.5 py-2 rounded-xl bg-[#162247] hover:bg-[#1f3063] text-white font-bold">+</button>
                   </div>
                 </div>
                 <div>
                   <label class="block text-[11px] text-slate-400 mb-1">Đơn giá 1 quả (đ)</label>
-                  <input type="number" id="costShuttlePrice" step="1000" value="25000" oninput="handleCostInputChange()" class="w-full px-3 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-sm font-bold text-white" />
+                  <input type="number" id="costShuttlePrice" step="1000" value="26000" oninput="handleCostInputChange()" class="w-full px-3 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-sm font-bold text-white" />
                 </div>
               </div>
             </div>
 
             <!-- 3. Chi Phí Phụ -->
-            <div class="bg-[#0f1730] border border-[#1f2e5c] rounded-2xl p-4 space-y-3">
+            <div class="bg-[#0f1730] border border-[#1f2e5c] rounded-2xl p-3.5 space-y-2.5">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-bold uppercase tracking-wider text-purple-300">🥤 3. Chi phí phụ (Nước, gửi xe...)</span>
-                <span class="text-sm font-extrabold text-white" id="extraCostSubtotal">120.000đ</span>
+                <span class="text-sm font-extrabold text-white" id="extraCostSubtotal">0đ</span>
               </div>
 
               <div id="extraExpensesList" class="space-y-2"></div>
@@ -686,9 +859,9 @@
             </div>
 
             <!-- 4. Phương thức chia tiền -->
-            <div class="bg-[#0f1730] border border-[#1f2e5c] rounded-2xl p-4 space-y-3">
+            <div class="bg-[#0f1730] border border-[#1f2e5c] rounded-2xl p-3.5 space-y-2.5">
               <label class="block text-xs font-bold uppercase tracking-wider text-emerald-300">⚖️ 4. Quy tắc chia tiền</label>
-              <select id="costSplitMode" onchange="handleCostInputChange()" class="w-full px-3.5 py-2.5 rounded-xl bg-[#090e1f] border border-[#243569] text-xs font-bold text-white">
+              <select id="costSplitMode" onchange="handleCostInputChange()" class="w-full px-3 py-2 rounded-xl bg-[#090e1f] border border-[#243569] text-xs font-bold text-white">
                 <option value="equal">Chia đều 100% cho tất cả thành viên tham gia</option>
                 <option value="gender_discount">Ưu đãi Nữ đóng 80% định mức Nam</option>
                 <option value="guest_surcharge">Vãng lai đóng thêm +15.000đ so với Cố định</option>
@@ -699,63 +872,6 @@
               </div>
             </div>
           </div>
-        </div>
-
-        <div class="lg:col-span-8 space-y-5">
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div class="bg-[#0b1021] border border-[#192342] rounded-2xl p-4">
-              <div class="text-[11px] text-slate-400 font-medium">Tổng chi phí buổi</div>
-              <div class="text-xl font-black text-white mt-1" id="billTotalCost">960.000đ</div>
-            </div>
-            <div class="bg-[#0b1021] border border-[#192342] rounded-2xl p-4">
-              <div class="text-[11px] text-slate-400 font-medium">Trung bình / người</div>
-              <div class="text-xl font-black text-blue-400 mt-1" id="billAvgPerPerson">80.000đ</div>
-            </div>
-            <div class="bg-[#0b1021] border border-emerald-500/30 rounded-2xl p-4">
-              <div class="text-[11px] text-emerald-300 font-semibold">Tổng số tiền đã trả</div>
-              <div class="text-xl font-black text-emerald-400 mt-1" id="billCollectedAmount">0đ</div>
-            </div>
-            <div class="bg-[#0b1021] border border-rose-500/30 rounded-2xl p-4">
-              <div class="text-[11px] text-rose-300 font-semibold">Tổng tiền nợ (Còn thiếu)</div>
-              <div class="text-xl font-black text-rose-400 mt-1" id="billRemainingAmount">0đ</div>
-            </div>
-          </div>
-
-          <div class="bg-[#0b1021] border border-[#192342] rounded-[24px] p-6">
-            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div>
-                <h3 class="text-base font-extrabold text-white">Bảng quản lý thanh toán: Số tiền đã trả & Tiền nợ (Admin)</h3>
-                <p class="text-xs text-slate-400">Nhập trực tiếp số tiền khách đã đưa vào cột "Số tiền đã trả", hệ thống tự động tính "Tiền nợ".</p>
-              </div>
-              <div class="flex flex-wrap items-center gap-2">
-                <button onclick="markAllPaid(true)" class="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition-colors">
-                  ✓ Tất cả đã trả đủ
-                </button>
-                <button onclick="copyBillSummaryToClipboard()" class="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-colors flex items-center gap-1.5">
-                  <span>📋 Copy báo cáo thu & nợ gửi Zalo</span>
-                </button>
-              </div>
-            </div>
-
-            <div class="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
-              <table class="w-full min-w-[660px] text-left border-collapse">
-                <thead>
-                  <tr class="border-b border-[#1b2749] text-[11px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">
-                    <th class="py-3 px-2.5">#</th>
-                    <th class="py-3 px-2.5">Thành viên</th>
-                    <th class="py-3 px-2.5">Tiền sân+cầu</th>
-                    <th class="py-3 px-2.5">Phụ phí</th>
-                    <th class="py-3 px-2.5">Tổng phải đóng</th>
-                    <th class="py-3 px-2.5 text-emerald-300">Số tiền đã trả</th>
-                    <th class="py-3 px-2.5 text-rose-300">Tiền nợ</th>
-                    <th class="py-3 px-2.5 text-right">Thao tác nhanh</th>
-                  </tr>
-                </thead>
-                <tbody id="costMemberBreakdownBody" class="divide-y divide-[#15203d] text-sm"></tbody>
-              </table>
-            </div>
-          </div>
-
         </div>
 
       </div>
@@ -941,6 +1057,6 @@
     <span id="toastMessage">Đã cập nhật!</span>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=20261118_v3"></script>
 </body>
 </html>
