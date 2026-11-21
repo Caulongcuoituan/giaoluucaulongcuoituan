@@ -20,6 +20,7 @@ import os
 import re
 import select
 import socket
+import struct
 import subprocess
 import threading
 import time
@@ -36,7 +37,8 @@ PORT = 8686
 CUSTOM_SUBDOMAIN = "giaoluucaulongcuoituan"
 # localtunnel.me enforces a 20-char max limit on custom subdomains
 LT_SUBDOMAIN = "giaoluucaulong"
-CLOUD_DB_TOPIC = "https://ntfy.sh/giaoluucaulongcuoituan_db_v1"
+MQTT_TOPIC = "giaoluucaulongcuoituan/state/v2"
+MQTT_TCP_BROKERS = ["broker.emqx.io", "broker.hivemq.com"]
 
 TUNNEL_INFO = {
     "domainName": CUSTOM_SUBDOMAIN,
@@ -131,57 +133,134 @@ def update_tunnel_info(lt_base=None, lhr_base=None):
         pass
 
 
+def _mqtt_encode_len(length):
+    out = bytearray()
+    while True:
+        digit = length % 128
+        length //= 128
+        if length > 0:
+            digit |= 0x80
+        out.append(digit)
+        if length == 0:
+            break
+    return bytes(out)
+
+
+def _mqtt_str(s):
+    b = s.encode("utf-8")
+    return struct.pack("!H", len(b)) + b
+
+
 def push_state_to_cloud(state_obj):
-    """Pushes latest state to ntfy.sh cloud relay so 4G/5G devices always stay synced."""
+    """Pushes latest retained state to MQTT Cloud Brokers so GitHub Pages & 4G/5G sync in <100ms."""
     try:
-        compact = json.dumps(state_obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        req = urllib.request.Request(
-            CLOUD_DB_TOPIC,
-            data=compact,
-            headers={"User-Agent": "Mozilla/5.0"},
-            method="POST"
-        )
-        urllib.request.urlopen(req, timeout=8).read()
+        payload = json.dumps(state_obj, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        pub_body = _mqtt_str(MQTT_TOPIC) + payload
+        pub_packet = bytes([0x31]) + _mqtt_encode_len(len(pub_body)) + pub_body
+        for host in MQTT_TCP_BROKERS:
+            try:
+                cid = f"glcl_srv_pub_{int(time.time() * 1000) % 100000}"
+                var_hdr = _mqtt_str("MQTT") + bytes([4, 2, 0, 60]) + _mqtt_str(cid)
+                conn_packet = bytes([0x10]) + _mqtt_encode_len(len(var_hdr)) + var_hdr
+                s = socket.create_connection((host, 1883), timeout=5)
+                s.sendall(conn_packet)
+                s.recv(4)
+                s.sendall(pub_packet)
+                s.close()
+            except Exception:
+                pass
     except Exception:
         pass
 
 
 def cloud_sync_listener():
-    """Polls ntfy.sh cloud relay so changes made on external networks sync back to club_data.json."""
-    time.sleep(2)
+    """Subscribes to MQTT Cloud Brokers so changes on GitHub Pages / 4G sync immediately to club_data.json."""
+    time.sleep(1)
     push_state_to_cloud(read_saved_state())
     while True:
+        sock = None
         try:
-            req = urllib.request.Request(
-                f"{CLOUD_DB_TOPIC}/json?poll=1&since=30s",
-                headers={"User-Agent": "Mozilla/5.0"}
-            )
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                raw_lines = resp.read().decode("utf-8", errors="replace").strip().splitlines()
-            for line in reversed(raw_lines):
-                if not line.strip():
+            sock = socket.create_connection(("broker.emqx.io", 1883), timeout=15)
+            cid = f"glcl_srv_sub_{int(time.time()) % 100000}"
+            var_hdr = _mqtt_str("MQTT") + bytes([4, 2, 0, 60]) + _mqtt_str(cid)
+            sock.sendall(bytes([0x10]) + _mqtt_encode_len(len(var_hdr)) + var_hdr)
+            sock.recv(4)
+
+            sub_body = struct.pack("!H", 1) + _mqtt_str(MQTT_TOPIC) + bytes([0])
+            sock.sendall(bytes([0x82]) + _mqtt_encode_len(len(sub_body)) + sub_body)
+
+            rx_buf = bytearray()
+            last_ping = time.time()
+            while True:
+                rlist, _, _ = select.select([sock], [], [], 20)
+                if not rlist:
+                    if time.time() - last_ping >= 20:
+                        sock.sendall(bytes([0xC0, 0x00]))
+                        last_ping = time.time()
                     continue
-                envelope = json.loads(line)
-                if envelope.get("event") != "message":
-                    continue
-                msg_str = envelope.get("message") or ""
-                if not msg_str.startswith("{"):
-                    continue
-                cloud_state = json.loads(msg_str)
-                if isinstance(cloud_state, dict) and "members" in cloud_state and "costs" in cloud_state:
-                    local_state = read_saved_state()
-                    cloud_rev = int(cloud_state.get("_rev", 0))
-                    local_rev = int(local_state.get("_rev", 0))
-                    if cloud_rev > local_rev:
-                        with DATA_LOCK:
-                            temp_file = DATA_FILE + ".tmp"
-                            with open(temp_file, "w", encoding="utf-8") as f:
-                                json.dump(cloud_state, f, ensure_ascii=False, indent=2)
-                            os.replace(temp_file, DATA_FILE)
+                chunk = sock.recv(65536)
+                if not chunk:
                     break
+                rx_buf.extend(chunk)
+
+                offset = 0
+                while offset < len(rx_buf):
+                    if len(rx_buf) - offset < 2:
+                        break
+                    cmd = rx_buf[offset]
+                    mult = 1
+                    rem_len = 0
+                    idx = offset + 1
+                    len_bytes = 0
+                    complete_len = False
+                    while idx < len(rx_buf) and len_bytes < 4:
+                        b = rx_buf[idx]
+                        idx += 1
+                        rem_len += (b & 127) * mult
+                        mult *= 128
+                        len_bytes += 1
+                        if (b & 128) == 0:
+                            complete_len = True
+                            break
+                    if not complete_len:
+                        break
+                    packet_end = idx + rem_len
+                    if len(rx_buf) < packet_end:
+                        break
+                    if (cmd & 0xF0) == 0x30:
+                        qos = (cmd >> 1) & 0x03
+                        t_len = (rx_buf[idx] << 8) | rx_buf[idx + 1]
+                        p_start = idx + 2 + t_len + (2 if qos > 0 else 0)
+                        if p_start <= packet_end:
+                            raw_json = bytes(rx_buf[p_start:packet_end]).decode("utf-8", errors="replace")
+                            try:
+                                cloud_state = json.loads(raw_json)
+                                if isinstance(cloud_state, dict) and "members" in cloud_state and "costs" in cloud_state:
+                                    local_state = read_saved_state()
+                                    c_upd = int(cloud_state.get("_updatedAt", 0))
+                                    l_upd = int(local_state.get("_updatedAt", 0))
+                                    c_rev = int(cloud_state.get("_rev", 0))
+                                    l_rev = int(local_state.get("_rev", 0))
+                                    if c_upd > l_upd or c_rev > l_rev:
+                                        with DATA_LOCK:
+                                            temp_file = DATA_FILE + ".tmp"
+                                            with open(temp_file, "w", encoding="utf-8") as f:
+                                                json.dump(cloud_state, f, ensure_ascii=False, indent=2)
+                                            os.replace(temp_file, DATA_FILE)
+                            except Exception:
+                                pass
+                    offset = packet_end
+                if offset > 0:
+                    del rx_buf[:offset]
         except Exception:
             pass
-        time.sleep(4)
+        finally:
+            if sock:
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+        time.sleep(3)
 
 
 def pipe_sockets(remote_sock, local_sock):

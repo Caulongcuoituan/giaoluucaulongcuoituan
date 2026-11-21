@@ -63,6 +63,82 @@ function getUpcomingDayISO(targetDayOfWeek) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// ============================================================================
+// TIME RANGE & MULTI-COURT HELPERS (HỖ TRỢ NHIỀU SÂN KHÁC GIỜ CHƠI)
+// ============================================================================
+function parseTimeToMinutes(timeStr) {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const match = timeStr.trim().match(/^(\d{1,2})[:hH](\d{2})?$/);
+  if (!match) return null;
+  const hh = parseInt(match[1], 10);
+  const mm = match[2] ? parseInt(match[2], 10) : 0;
+  if (isNaN(hh) || isNaN(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return hh * 60 + mm;
+}
+
+function minutesToTimeStr(totalMins) {
+  const normalized = ((Math.round(totalMins) % 1440) + 1440) % 1440;
+  const hh = String(Math.floor(normalized / 60)).padStart(2, '0');
+  const mm = String(normalized % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function calcHoursFromTimeRange(startTime, endTime) {
+  const s = parseTimeToMinutes(startTime);
+  const e = parseTimeToMinutes(endTime);
+  if (s === null || e === null) return 0;
+  let diff = e - s;
+  if (diff <= 0) diff += 1440;
+  return Math.round((diff / 60) * 100) / 100;
+}
+
+function addHoursToTimeStr(startTime, hours) {
+  const s = parseTimeToMinutes(startTime);
+  const baseMins = s !== null ? s : 18 * 60;
+  const addMins = Math.round((Number(hours) || 0) * 60);
+  return minutesToTimeStr(baseMins + addMins);
+}
+
+function formatHoursCompact(hours) {
+  const rounded = Math.round((Number(hours) || 0) * 100) / 100;
+  return `${rounded}h`;
+}
+
+function buildDefaultCourtBookingsFromLegacy(costs, sessionTime) {
+  const rate = Math.max(0, Number(costs?.courtRate) || 130000);
+  const count = Math.max(1, Math.min(20, Math.round(Number(costs?.courtsCount) || 1)));
+  const hours = Math.max(0.25, Number(costs?.courtHours) || 2);
+
+  let defaultStart = '18:00';
+  if (typeof sessionTime === 'string') {
+    const m = sessionTime.match(/(\d{1,2}:\d{2})/);
+    if (m && parseTimeToMinutes(m[1]) !== null) {
+      defaultStart = minutesToTimeStr(parseTimeToMinutes(m[1]));
+    }
+  }
+  const defaultEnd = addHoursToTimeStr(defaultStart, hours);
+
+  const bookings = [];
+  for (let i = 0; i < count; i++) {
+    bookings.push({
+      id: `cb_${i + 1}`,
+      name: `Sân ${i + 1}`,
+      startTime: defaultStart,
+      endTime: defaultEnd,
+      hours,
+      rate
+    });
+  }
+  return bookings;
+}
+
+function syncLegacyCourtStatsFromBookings(costs) {
+  if (!costs || !Array.isArray(costs.courtBookings)) return;
+  costs.courtsCount = costs.courtBookings.length;
+  const totalHrs = costs.courtBookings.reduce((sum, b) => sum + (Number(b.hours) || 0), 0);
+  costs.courtHours = Math.round(totalHrs * 100) / 100;
+}
+
 // Default initial state matching live club_data.json
 function getDefaultState() {
   const defaultISO = '2026-11-14';
@@ -91,9 +167,15 @@ function getDefaultState() {
       { id: 'm1794141555013', name: 'Hiếu', gender: 'M', skill: 'A', type: 'fixed', extraFee: 0, amountPaid: 0, paid: false, playDate: 'Thứ 7 · 14/11/2026', note: '' }
     ],
     costs: {
-      courtsCount: 1,
+      courtsCount: 3,
       courtHours: 5,
       courtRate: 130000,
+      courtBookings: [
+        { id: 'cb_1', name: 'Sân 1', startTime: '18:00', endTime: '20:00', hours: 2, rate: 130000 },
+        { id: 'cb_2', name: 'Sân 2', startTime: '18:30', endTime: '20:00', hours: 1.5, rate: 130000 },
+        { id: 'cb_3', name: 'Sân 3', startTime: '18:30', endTime: '20:00', hours: 1.5, rate: 130000 }
+      ],
+      overtimeSessions: [],
       shuttleCount: 8,
       shuttlePrice: 26000,
       extraExpenses: [],
@@ -167,6 +249,54 @@ function normalizeStateObject(parsed) {
   if (!Array.isArray(parsed.debtLogs)) {
     parsed.debtLogs = [];
   }
+  if (!Array.isArray(parsed.costs.courtBookings) || parsed.costs.courtBookings.length === 0) {
+    parsed.costs.courtBookings = buildDefaultCourtBookingsFromLegacy(
+      parsed.costs,
+      parsed.settings.sessionTime
+    );
+  } else {
+    parsed.costs.courtBookings = parsed.costs.courtBookings.map((b, idx) => {
+      const startTime = b.startTime || '18:00';
+      let hours = Number(b.hours);
+      if (isNaN(hours) || hours <= 0) {
+        hours = b.endTime ? calcHoursFromTimeRange(startTime, b.endTime) : 2;
+      }
+      const endTime = b.endTime || addHoursToTimeStr(startTime, hours);
+      return {
+        id: b.id || `cb_${idx + 1}`,
+        name: b.name || `Sân ${idx + 1}`,
+        startTime,
+        endTime,
+        hours: Math.max(0.25, Math.round(hours * 100) / 100),
+        rate: Math.max(0, Number(b.rate ?? parsed.costs.courtRate) || 0)
+      };
+    });
+  }
+  syncLegacyCourtStatsFromBookings(parsed.costs);
+
+  if (!Array.isArray(parsed.costs.overtimeSessions)) {
+    parsed.costs.overtimeSessions = [];
+  } else {
+    parsed.costs.overtimeSessions = parsed.costs.overtimeSessions.map((ot, idx) => {
+      const startTime = ot.startTime || '20:00';
+      let hours = Number(ot.hours);
+      if (isNaN(hours) || hours <= 0) {
+        hours = ot.endTime ? calcHoursFromTimeRange(startTime, ot.endTime) : 1;
+      }
+      const endTime = ot.endTime || addHoursToTimeStr(startTime, hours);
+      return {
+        id: ot.id || `ot_${idx + 1}`,
+        startTime,
+        endTime,
+        courtsCount: Math.max(1, Number(ot.courtsCount) || 1),
+        hours: Math.max(0.25, Math.round(hours * 100) / 100),
+        courtRate: Math.max(0, Number(ot.courtRate ?? parsed.costs.courtRate) || 0),
+        shuttleCount: Math.max(0, Number(ot.shuttleCount) || 0),
+        memberIds: Array.isArray(ot.memberIds) ? ot.memberIds : []
+      };
+    });
+  }
+
   parsed.members.forEach(m => {
     if (typeof m.amountPaid !== 'number') {
       m.amountPaid = m.paid ? 80000 : 0;
@@ -276,12 +406,19 @@ function handleIncomingCloudState(jsonText) {
     const isEditingTableInput =
       hasReceivedInitialCloudState &&
       activeEl &&
-      activeEl.tagName === 'INPUT' &&
+      (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT') &&
       ((activeEl.type === 'number' &&
         activeEl.id !== 'regExtraFee' &&
         activeEl.id !== 'newExpenseAmount' &&
         activeEl.id !== 'debtLogAmountInput') ||
-        activeEl.id === 'costCourtHours');
+        activeEl.id === 'costCourtHours' ||
+        (activeEl.closest &&
+          activeEl.closest('#tab-costs') &&
+          activeEl.id !== 'newExpenseName' &&
+          activeEl.id !== 'newExpenseAmount' &&
+          activeEl.id !== 'debtLogMemberName' &&
+          activeEl.id !== 'debtLogAmountInput' &&
+          activeEl.id !== 'debtLogNoteInput'));
 
     if (isEditingTableInput) return;
 
@@ -505,12 +642,19 @@ async function pullStateFromServer(isInitial) {
   const isEditingTableInput =
     !isInitial &&
     activeEl &&
-    activeEl.tagName === 'INPUT' &&
+    (activeEl.tagName === 'INPUT' || activeEl.tagName === 'SELECT') &&
     ((activeEl.type === 'number' &&
       activeEl.id !== 'regExtraFee' &&
       activeEl.id !== 'newExpenseAmount' &&
       activeEl.id !== 'debtLogAmountInput') ||
-      activeEl.id === 'costCourtHours');
+      activeEl.id === 'costCourtHours' ||
+      (activeEl.closest &&
+        activeEl.closest('#tab-costs') &&
+        activeEl.id !== 'newExpenseName' &&
+        activeEl.id !== 'newExpenseAmount' &&
+        activeEl.id !== 'debtLogMemberName' &&
+        activeEl.id !== 'debtLogAmountInput' &&
+        activeEl.id !== 'debtLogNoteInput'));
 
   if (isEditingTableInput) return;
 
@@ -710,6 +854,7 @@ function transitionToNewSessionDate(newISO) {
     // Cập nhật sang ngày đánh mới và đặt lại trạng thái đóng tiền của buổi mới (nợ cũ vẫn được cộng dồn tự động)
     state.settings.sessionDateISO = newISO;
     state.settings.sessionDate = newDateLabel;
+    state.costs.overtimeSessions = [];
     state.members.forEach(m => {
       m.playDate = newDateLabel;
       m.amountPaid = 0;
@@ -822,11 +967,68 @@ function getMemberOldDebtFromLogs(memberName, currentPlayDate) {
 
 function calculateSessionCosts() {
   const c = state.costs;
-  const courtSubtotal = (Number(c.courtsCount) || 0) * (Number(c.courtHours) || 0) * (Number(c.courtRate) || 0);
-  const shuttleSubtotal = (Number(c.shuttleCount) || 0) * (Number(c.shuttlePrice) || 0);
-  const extraSubtotal = (c.extraExpenses || []).reduce((acc, item) => acc + (Number(item.amount) || 0), 0);
-  const sharedTotal = courtSubtotal + shuttleSubtotal + extraSubtotal;
+  const courtBookings =
+    Array.isArray(c.courtBookings) && c.courtBookings.length > 0
+      ? c.courtBookings
+      : buildDefaultCourtBookingsFromLegacy(c, state.settings.sessionTime);
 
+  const totalCourtHours =
+    Math.round(courtBookings.reduce((sum, b) => sum + (Number(b.hours) || 0), 0) * 100) / 100;
+  const courtSubtotal = Math.round(
+    courtBookings.reduce((sum, b) => sum + (Number(b.hours) || 0) * (Number(b.rate) || 0), 0)
+  );
+  const shuttleSubtotal = Math.round((Number(c.shuttleCount) || 0) * (Number(c.shuttlePrice) || 0));
+  const extraSubtotal = (c.extraExpenses || []).reduce((acc, item) => acc + (Number(item.amount) || 0), 0);
+  const baseSharedTotal = courtSubtotal + shuttleSubtotal + extraSubtotal;
+
+  // Tính chi phí các ca chơi thêm giờ (chỉ chia cho thành viên được chọn chơi thêm, không tính người về sớm)
+  const overtimeSessions = Array.isArray(c.overtimeSessions) ? c.overtimeSessions : [];
+  let overtimeSubtotal = 0;
+  const overtimeBreakdowns = {};
+  const memberOvertimeFee = {};
+  const memberOvertimeDetails = {};
+  state.members.forEach(m => {
+    memberOvertimeFee[m.id] = 0;
+    memberOvertimeDetails[m.id] = [];
+  });
+
+  overtimeSessions.forEach(ot => {
+    const otCourts = Math.max(1, Number(ot.courtsCount) || 1);
+    const otHours = Math.max(0, Number(ot.hours) || 0);
+    const otRate = Math.max(0, Number(ot.courtRate) || 0);
+    const otShuttles = Math.max(0, Number(ot.shuttleCount) || 0);
+    const otTotal = Math.round(otCourts * otHours * otRate + otShuttles * (Number(c.shuttlePrice) || 0));
+    overtimeSubtotal += otTotal;
+
+    const selectedIds = Array.isArray(ot.memberIds) ? ot.memberIds : [];
+    const participants = state.members.filter(m => selectedIds.includes(m.id));
+    let perPerson = 0;
+    if (participants.length > 0 && otTotal > 0) {
+      perPerson = otTotal / participants.length;
+      if (c.roundThousand) perPerson = Math.ceil(perPerson / 1000) * 1000;
+      perPerson = Math.round(perPerson);
+      participants.forEach(p => {
+        memberOvertimeFee[p.id] = (memberOvertimeFee[p.id] || 0) + perPerson;
+        memberOvertimeDetails[p.id].push({
+          id: ot.id,
+          startTime: ot.startTime || '20:00',
+          endTime: ot.endTime || '21:00',
+          hours: otHours,
+          fee: perPerson
+        });
+      });
+    }
+
+    overtimeBreakdowns[ot.id] = {
+      otTotal,
+      participantCount: participants.length,
+      earlyLeaverCount: Math.max(0, state.members.length - participants.length),
+      perPerson,
+      participantNames: participants.map(p => p.name)
+    };
+  });
+
+  const sharedTotal = baseSharedTotal + overtimeSubtotal;
   const memberCount = state.members.length;
   const memberShares = {};
 
@@ -835,7 +1037,10 @@ function calculateSessionCosts() {
     if (c.roundThousand) baseShare = Math.ceil(baseShare / 1000) * 1000;
     const roundedBase = Math.round(baseShare);
     const extra = Number(m.extraFee) || 0;
-    const sessionFee = roundedBase + extra;
+    const overtimeFee = memberOvertimeFee[m.id] || 0;
+    const overtimeDetails = memberOvertimeDetails[m.id] || [];
+    const isEarlyLeaver = overtimeSessions.length > 0 && overtimeFee === 0;
+    const sessionFee = roundedBase + extra + overtimeFee;
 
     const currentPlayDate = m.playDate || state.settings.sessionDate;
     const { totalOldDebt, logs: oldDebtLogs } = getMemberOldDebtFromLogs(m.name, currentPlayDate);
@@ -851,6 +1056,9 @@ function calculateSessionCosts() {
     return {
       baseShare: roundedBase,
       extraFee: extra,
+      overtimeFee,
+      overtimeDetails,
+      isEarlyLeaver,
       sessionFee,
       oldDebt: totalOldDebt,
       remainingOldDebt,
@@ -866,20 +1074,20 @@ function calculateSessionCosts() {
   if (memberCount > 0) {
     if (c.splitMode === 'gender_discount') {
       const totalUnits = state.members.reduce((sum, m) => sum + (m.gender === 'F' ? 0.8 : 1.0), 0);
-      const unitCost = totalUnits > 0 ? sharedTotal / totalUnits : 0;
+      const unitCost = totalUnits > 0 ? baseSharedTotal / totalUnits : 0;
       state.members.forEach(m => {
         memberShares[m.id] = buildMemberShare(m, unitCost * (m.gender === 'F' ? 0.8 : 1.0));
       });
     } else if (c.splitMode === 'guest_surcharge') {
       const surcharge = 15000;
       const guestCount = state.members.filter(m => m.type === 'guest').length;
-      const basePool = Math.max(0, sharedTotal - guestCount * surcharge);
+      const basePool = Math.max(0, baseSharedTotal - guestCount * surcharge);
       const basePerPerson = basePool / memberCount;
       state.members.forEach(m => {
         memberShares[m.id] = buildMemberShare(m, basePerPerson + (m.type === 'guest' ? surcharge : 0));
       });
     } else {
-      const basePerPerson = sharedTotal / memberCount;
+      const basePerPerson = baseSharedTotal / memberCount;
       state.members.forEach(m => {
         memberShares[m.id] = buildMemberShare(m, basePerPerson);
       });
@@ -927,12 +1135,18 @@ function calculateSessionCosts() {
   }
 
   const debtOnlyMembers = Object.values(debtOnlyMap).sort((a, b) => b.totalOldDebt - a.totalOldDebt);
-  const avgPerPerson = memberCount > 0 ? Math.round(sharedTotal / memberCount) : 0;
+  const avgPerPerson = memberCount > 0 ? Math.round(baseSharedTotal / memberCount) : 0;
 
   return {
+    courtBookings,
+    totalCourtHours,
     courtSubtotal,
     shuttleSubtotal,
     extraSubtotal,
+    baseSharedTotal,
+    overtimeSessions,
+    overtimeSubtotal,
+    overtimeBreakdowns,
     sharedTotal,
     avgPerPerson,
     totalPayableAllMembers,
@@ -991,7 +1205,8 @@ function renderHeroBanner() {
   } else if (currentHeroSlide === 1) {
     badgeEl.textContent = `Quản lý tài chính buổi đánh · Đã trả & Tiền nợ`;
     headlineEl.innerHTML = `Đã thu ${formatVND(costData.totalCollected)}<br/>Còn nợ ${formatVND(costData.totalRemaining)}`;
-    subtextEl.textContent = `Tổng chi phí: ${formatVND(costData.sharedTotal)} (Tiền sân: ${formatVND(costData.courtSubtotal)} · Tiền cầu: ${formatVND(costData.shuttleSubtotal)} · Phụ phí: ${formatVND(costData.extraSubtotal)}).`;
+    const otHeroText = costData.overtimeSubtotal > 0 ? ` · Chơi thêm giờ: ${formatVND(costData.overtimeSubtotal)}` : '';
+    subtextEl.textContent = `Tổng chi phí: ${formatVND(costData.sharedTotal)} (Tiền sân ${costData.courtBookings.length} sân/${formatHoursCompact(costData.totalCourtHours)}: ${formatVND(costData.courtSubtotal)} · Tiền cầu: ${formatVND(costData.shuttleSubtotal)} · Phụ phí: ${formatVND(costData.extraSubtotal)}${otHeroText}).`;
   } else {
     badgeEl.textContent = `Sơ đồ ghép cặp tuần · Đôi Nam · Đôi Nam Nữ · Đôi Nữ`;
     headlineEl.innerHTML = `${state.matches.length} trận đấu cân bằng<br/>cho ${state.members.length} thành viên`;
@@ -1388,6 +1603,11 @@ function renderRegistrationTab() {
       const oldDebtLine = shareInfo.oldDebt > 0
         ? `<div class="text-[10px] text-rose-300 font-bold">📌 Gồm nợ tuần cũ: +${formatVND(shareInfo.oldDebt)}</div>`
         : '';
+      const overtimeLine = shareInfo.overtimeFee > 0
+        ? `<div class="text-[10px] text-indigo-300 font-bold">⏱️ Gồm chơi thêm giờ: +${formatVND(shareInfo.overtimeFee)}</div>`
+        : shareInfo.isEarlyLeaver
+        ? `<div class="text-[10px] text-slate-400">🏠 Về sớm (không tính tiền thêm giờ)</div>`
+        : '';
 
       return `
         <div class="p-3 rounded-xl bg-[#0f1730] border ${shareInfo.debtAmount > 0 ? 'border-[#1f2e5c]' : 'border-emerald-500/30 opacity-85'} space-y-2">
@@ -1401,6 +1621,7 @@ function renderRegistrationTab() {
             ${admin ? `<button onclick="removeMember('${m.id}')" class="px-2 py-0.5 rounded-lg bg-rose-500/15 border border-rose-500/30 text-[10px] font-bold text-rose-300 shrink-0">Xóa</button>` : ''}
           </div>
           ${oldDebtLine}
+          ${overtimeLine}
           <div class="flex items-center justify-between gap-2 pt-1.5 border-t border-[#1b2852] text-xs">
             <div class="flex items-center gap-2">
               <span class="text-slate-400">Phải trả: <strong class="text-white font-black">${formatVND(shareInfo.totalDue)}</strong></span>
@@ -1461,6 +1682,7 @@ function renderRegistrationTab() {
         </td>
         <td class="py-3.5 px-2.5 sm:px-3 whitespace-nowrap">
           <div class="font-extrabold text-white whitespace-nowrap">${formatVND(shareInfo.totalDue)}</div>
+          ${shareInfo.overtimeFee > 0 ? `<div class="text-[10px] text-indigo-300 font-bold whitespace-nowrap">⏱️ +${formatVND(shareInfo.overtimeFee)} chơi thêm giờ</div>` : shareInfo.isEarlyLeaver ? `<div class="text-[10px] text-slate-400 whitespace-nowrap">🏠 Về sớm (0đ thêm giờ)</div>` : ''}
           ${shareInfo.oldDebt > 0 ? `<div class="text-[10px] text-rose-300 font-bold whitespace-nowrap">Gồm +${formatVND(shareInfo.oldDebt)} nợ tuần cũ</div>` : ''}
           ${shareInfo.extraFee > 0 ? `<div class="text-[10px] text-amber-300 whitespace-nowrap">Gồm +${formatVND(shareInfo.extraFee)} phụ phí</div>` : ''}
         </td>
@@ -1521,6 +1743,13 @@ function removeMember(memberId) {
   state.matches = state.matches.filter(
     match => !match.teamA.includes(memberId) && !match.teamB.includes(memberId)
   );
+  if (Array.isArray(state.costs?.overtimeSessions)) {
+    state.costs.overtimeSessions.forEach(ot => {
+      if (Array.isArray(ot.memberIds)) {
+        ot.memberIds = ot.memberIds.filter(id => id !== memberId);
+      }
+    });
+  }
   saveState();
   renderAll();
   if (target) showToast(`Đã xóa ${target.name} khỏi danh sách tuần.`);
@@ -1557,6 +1786,7 @@ function generateWeeklyMatches(advanceNewWeek = true) {
     const nextWeekISO = addDaysToISO(state.settings.sessionDateISO || '2026-11-14', 7);
     state.settings.sessionDateISO = nextWeekISO;
     state.settings.sessionDate = formatISOToVietnameseDate(nextWeekISO);
+    state.costs.overtimeSessions = [];
 
     state.members.forEach(m => {
       m.playDate = state.settings.sessionDate;
@@ -1591,11 +1821,18 @@ function generateWeeklyMatches(advanceNewWeek = true) {
   }
 
   const newMatches = [];
-  const courtsCount = Math.max(1, Number(state.costs.courtsCount) || 3);
+  const bookings =
+    Array.isArray(state.costs.courtBookings) && state.costs.courtBookings.length > 0
+      ? state.costs.courtBookings
+      : [];
+  const courtsCount = Math.max(1, bookings.length || Number(state.costs.courtsCount) || 3);
 
   for (let i = 0; i < targetCount; i++) {
     const roundNumber = Math.floor(i / courtsCount) + 1;
-    const courtNumber = (i % courtsCount) + 1;
+    const courtIndex = i % courtsCount;
+    const courtLabel = bookings[courtIndex]
+      ? `${bookings[courtIndex].name} (${bookings[courtIndex].startTime}–${bookings[courtIndex].endTime})`
+      : `Sân ${courtIndex + 1}`;
 
     let chosenCat = 'MD';
     const canMD = males.length >= 4;
@@ -1655,7 +1892,7 @@ function generateWeeklyMatches(advanceNewWeek = true) {
     newMatches.push({
       id: `T${i + 1}`,
       round: `Vòng ${roundNumber}`,
-      court: `Sân ${courtNumber}`,
+      court: courtLabel,
       category: chosenCat,
       teamA,
       teamB,
@@ -1902,6 +2139,15 @@ function toggleManualMatchModal() {
   if (!modal) return;
   const isHidden = modal.classList.contains('hidden');
   if (isHidden) {
+    const courtSel = document.getElementById('manualMatchCourt');
+    if (courtSel && Array.isArray(state.costs.courtBookings) && state.costs.courtBookings.length > 0) {
+      courtSel.innerHTML = state.costs.courtBookings
+        .map(
+          b =>
+            `<option value="${b.name} (${b.startTime}–${b.endTime})" class="bg-[#0b1021]">${b.name} (${b.startTime}–${b.endTime})</option>`
+        )
+        .join('');
+    }
     const opts = state.members.map(
       m => `<option value="${m.id}" class="bg-[#0b1021]">${m.name} (${m.gender === 'M' ? 'Nam' : 'Nữ'} · Hạng ${m.skill})</option>`
     ).join('');
@@ -2026,14 +2272,297 @@ function getMemberUnpaidDebtLogs(memberName) {
   );
 }
 
+function renderCourtBookingsList(calc) {
+  const container = document.getElementById('courtBookingsList');
+  if (!container) return;
+
+  const bookings = calc.courtBookings || [];
+  container.innerHTML = bookings
+    .map((b, idx) => {
+      const sub = Math.round((Number(b.hours) || 0) * (Number(b.rate) || 0));
+      const canRemove = bookings.length > 1;
+      return `
+        <div class="p-2.5 rounded-xl bg-[#090e1f] border border-[#1d2b56] space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <input
+              type="text"
+              value="${b.name.replace(/"/g, '&quot;')}"
+              onchange="updateCourtBookingField('${b.id}', 'name', this.value)"
+              class="w-24 px-2 py-1 rounded-lg bg-[#0f1730] border border-[#243569] text-xs font-extrabold text-blue-300 focus:outline-none focus:border-blue-400"
+            />
+            <div class="flex items-center gap-2">
+              <span id="courtBookingSub_${b.id}" class="text-xs font-black text-white whitespace-nowrap">${formatVND(sub)}</span>
+              ${
+                canRemove
+                  ? `<button type="button" onclick="removeCourtBooking('${b.id}')" class="px-1.5 py-0.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 text-[11px] font-bold" title="Xóa sân này">✕</button>`
+                  : ''
+              }
+            </div>
+          </div>
+
+          <div class="grid grid-cols-12 gap-1.5 items-end">
+            <div class="col-span-4">
+              <label class="block text-[9px] text-slate-400 mb-0.5">Từ giờ</label>
+              <input
+                type="time"
+                step="900"
+                value="${b.startTime || '18:00'}"
+                onchange="updateCourtBookingField('${b.id}', 'startTime', this.value)"
+                class="w-full px-1.5 py-1.5 rounded-lg bg-[#0f1730] border border-[#243569] text-[11px] font-bold text-white"
+              />
+            </div>
+            <div class="col-span-4">
+              <label class="block text-[9px] text-slate-400 mb-0.5">Đến giờ</label>
+              <input
+                type="time"
+                step="900"
+                value="${b.endTime || '20:00'}"
+                onchange="updateCourtBookingField('${b.id}', 'endTime', this.value)"
+                class="w-full px-1.5 py-1.5 rounded-lg bg-[#0f1730] border border-[#243569] text-[11px] font-bold text-white"
+              />
+            </div>
+            <div class="col-span-4">
+              <label class="block text-[9px] text-slate-400 mb-0.5">Giá/giờ (đ)</label>
+              <input
+                type="number"
+                inputmode="numeric"
+                step="5000"
+                min="0"
+                value="${b.rate}"
+                onchange="updateCourtBookingField('${b.id}', 'rate', this.value)"
+                class="w-full px-1.5 py-1.5 rounded-lg bg-[#0f1730] border border-[#243569] text-[11px] font-bold text-slate-200"
+              />
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between gap-2 pt-1 border-t border-[#15203d]">
+            <span class="text-[10px] text-amber-300 font-semibold">Số giờ chơi (lẻ):</span>
+            <div class="flex items-center gap-1">
+              <button type="button" onclick="adjustCourtBookingHours('${b.id}', -0.5)" class="px-2 py-0.5 rounded-lg bg-[#162247] hover:bg-[#1f3063] text-white text-[11px] font-bold">-0.5h</button>
+              <input
+                type="text"
+                inputmode="decimal"
+                value="${b.hours}"
+                onchange="updateCourtBookingField('${b.id}', 'hours', this.value)"
+                class="w-14 text-center px-1.5 py-0.5 rounded-lg bg-[#0f1730] border border-amber-500/50 text-xs font-extrabold text-amber-300 focus:outline-none"
+              />
+              <button type="button" onclick="adjustCourtBookingHours('${b.id}', 0.5)" class="px-2 py-0.5 rounded-lg bg-[#162247] hover:bg-[#1f3063] text-white text-[11px] font-bold">+0.5h</button>
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+function renderOvertimeSessionsList(calc) {
+  const container = document.getElementById('overtimeSessionsList');
+  if (!container) return;
+
+  const sessions = calc.overtimeSessions || [];
+  if (sessions.length === 0) {
+    container.innerHTML = `
+      <div class="text-center py-3 px-2.5 rounded-xl bg-[#090e1f] border border-dashed border-indigo-500/30 text-[11px] text-slate-400">
+        Chưa có ca chơi thêm giờ. Bấm <strong class="text-indigo-300">"+ Thêm giờ"</strong> nếu có nhóm ở lại đánh tăng ca (chỉ chia tiền cho người chơi thêm, miễn người về sớm).
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = sessions
+    .map((ot, idx) => {
+      const info = calc.overtimeBreakdowns[ot.id] || {
+        otTotal: 0,
+        participantCount: 0,
+        earlyLeaverCount: state.members.length,
+        perPerson: 0
+      };
+      const selectedIds = Array.isArray(ot.memberIds) ? ot.memberIds : [];
+
+      const memberChipsHtml =
+        state.members.length === 0
+          ? `<span class="text-[11px] text-slate-500 italic">Chưa có thành viên đăng ký để chọn.</span>`
+          : state.members
+              .map(m => {
+                const isSelected = selectedIds.includes(m.id);
+                return `
+                  <button
+                    type="button"
+                    onclick="toggleOvertimeMember('${ot.id}', '${m.id}')"
+                    class="px-2 py-1 rounded-lg text-[11px] font-bold border transition-all flex items-center gap-1 whitespace-nowrap ${
+                      isSelected
+                        ? 'bg-indigo-600/35 border-indigo-400 text-white shadow-sm'
+                        : 'bg-[#0b1021] border-[#1f2e5c] text-slate-400 hover:border-slate-500'
+                    }"
+                    title="${isSelected ? 'Đang tính tiền chơi thêm (chạm để chuyển sang Về sớm)' : 'Đang tính là Về sớm 0đ (chạm để chọn Chơi thêm)'}"
+                  >
+                    <span>${isSelected ? '✓' : '🏠'}</span>
+                    <span>${m.name}</span>
+                    ${isSelected ? `<span class="text-[9px] text-indigo-200 font-extrabold">+${formatVND(info.perPerson)}</span>` : `<span class="text-[9px] text-slate-500">0đ</span>`}
+                  </button>
+                `;
+              })
+              .join('');
+
+      return `
+        <div class="p-3 rounded-xl bg-[#090e1f] border border-indigo-500/40 space-y-2.5">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-xs font-extrabold text-indigo-300">⏱️ Ca thêm #${idx + 1} (${ot.startTime}–${ot.endTime})</span>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-black text-white">${formatVND(info.otTotal)}</span>
+              <button type="button" onclick="removeOvertimeSession('${ot.id}')" class="px-1.5 py-0.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/30 text-rose-300 text-[11px] font-bold" title="Xóa ca chơi thêm này">✕</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-12 gap-1.5">
+            <div class="col-span-4">
+              <label class="block text-[9px] text-slate-400 mb-0.5">Từ giờ</label>
+              <input
+                type="time"
+                step="900"
+                value="${ot.startTime || '20:00'}"
+                onchange="updateOvertimeField('${ot.id}', 'startTime', this.value)"
+                class="w-full px-1.5 py-1 rounded-lg bg-[#0f1730] border border-[#243569] text-[11px] font-bold text-white"
+              />
+            </div>
+            <div class="col-span-4">
+              <label class="block text-[9px] text-slate-400 mb-0.5">Đến giờ</label>
+              <input
+                type="time"
+                step="900"
+                value="${ot.endTime || '21:00'}"
+                onchange="updateOvertimeField('${ot.id}', 'endTime', this.value)"
+                class="w-full px-1.5 py-1 rounded-lg bg-[#0f1730] border border-[#243569] text-[11px] font-bold text-white"
+              />
+            </div>
+            <div class="col-span-4">
+              <label class="block text-[9px] text-slate-400 mb-0.5">Giá sân/giờ</label>
+              <input
+                type="number"
+                inputmode="numeric"
+                step="5000"
+                min="0"
+                value="${ot.courtRate}"
+                onchange="updateOvertimeField('${ot.id}', 'courtRate', this.value)"
+                class="w-full px-1.5 py-1 rounded-lg bg-[#0f1730] border border-[#243569] text-[11px] font-bold text-slate-200"
+              />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-12 gap-1.5 items-center pt-1 border-t border-[#15203d]">
+            <div class="col-span-3">
+              <label class="block text-[9px] text-slate-400 mb-0.5">Số sân</label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value="${ot.courtsCount || 1}"
+                onchange="updateOvertimeField('${ot.id}', 'courtsCount', this.value)"
+                class="w-full text-center px-1.5 py-1 rounded-lg bg-[#0f1730] border border-[#243569] text-xs font-bold text-white"
+              />
+            </div>
+            <div class="col-span-5">
+              <label class="block text-[9px] text-amber-300 mb-0.5">Số giờ thêm (lẻ)</label>
+              <div class="flex items-center gap-1">
+                <button type="button" onclick="adjustOvertimeHours('${ot.id}', -0.5)" class="px-1.5 py-1 rounded-lg bg-[#162247] hover:bg-[#1f3063] text-white text-[10px] font-bold">-0.5</button>
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  value="${ot.hours}"
+                  onchange="updateOvertimeField('${ot.id}', 'hours', this.value)"
+                  class="w-full text-center px-1 py-1 rounded-lg bg-[#0f1730] border border-amber-500/50 text-xs font-extrabold text-amber-300"
+                />
+                <button type="button" onclick="adjustOvertimeHours('${ot.id}', 0.5)" class="px-1.5 py-1 rounded-lg bg-[#162247] hover:bg-[#1f3063] text-white text-[10px] font-bold">+0.5</button>
+              </div>
+            </div>
+            <div class="col-span-4">
+              <label class="block text-[9px] text-slate-400 mb-0.5">Cầu thêm (quả)</label>
+              <div class="flex items-center gap-1">
+                <button type="button" onclick="adjustOvertimeShuttles('${ot.id}', -1)" class="px-1.5 py-1 rounded-lg bg-[#162247] hover:bg-[#1f3063] text-white text-[10px] font-bold">-</button>
+                <input
+                  type="number"
+                  min="0"
+                  value="${ot.shuttleCount || 0}"
+                  onchange="updateOvertimeField('${ot.id}', 'shuttleCount', this.value)"
+                  class="w-full text-center px-1 py-1 rounded-lg bg-[#0f1730] border border-[#243569] text-xs font-bold text-white"
+                />
+                <button type="button" onclick="adjustOvertimeShuttles('${ot.id}', 1)" class="px-1.5 py-1 rounded-lg bg-[#162247] hover:bg-[#1f3063] text-white text-[10px] font-bold">+</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Chọn thành viên chơi thêm -->
+          <div class="pt-2 border-t border-[#15203d] space-y-1.5">
+            <div class="flex items-center justify-between gap-1 text-[10px]">
+              <span class="font-bold text-indigo-200">👥 Chọn người chơi thêm (${info.participantCount}/${state.members.length}):</span>
+              <div class="flex items-center gap-1.5">
+                <button type="button" onclick="setAllOvertimeMembers('${ot.id}', true)" class="text-blue-300 hover:underline font-bold">Chọn hết</button>
+                <span class="text-slate-600">|</span>
+                <button type="button" onclick="setAllOvertimeMembers('${ot.id}', false)" class="text-slate-400 hover:underline font-semibold">Bỏ chọn</button>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              ${memberChipsHtml}
+            </div>
+            <div class="text-[10px] pt-1 flex flex-wrap items-center justify-between gap-1">
+              ${
+                info.participantCount > 0
+                  ? `<span class="text-emerald-300 font-bold">✓ ${info.participantCount} người chơi thêm: +${formatVND(info.perPerson)}/người</span>
+                     <span class="text-slate-400">🏠 ${info.earlyLeaverCount} người về sớm: <strong>0đ</strong></span>`
+                  : `<span class="text-amber-300 font-semibold">⚠️ Hãy chạm chọn những người ở lại chơi thêm để chia tiền ca này.</span>`
+              }
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+function renderUserCourtAndOvertimeSummary(calc) {
+  const el = document.getElementById('userCourtAndOvertimeSummary');
+  if (!el) return;
+
+  const courtsHtml = (calc.courtBookings || [])
+    .map(
+      b =>
+        `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-500/15 border border-blue-500/30 text-[11px] font-bold text-blue-200 whitespace-nowrap">
+          🏟️ ${b.name}: ${b.startTime}–${b.endTime} (${formatHoursCompact(b.hours)})
+        </span>`
+    )
+    .join('');
+
+  const overtimeHtml = (calc.overtimeSessions || [])
+    .map(ot => {
+      const info = calc.overtimeBreakdowns[ot.id] || { otTotal: 0, participantCount: 0, perPerson: 0, participantNames: [] };
+      return `
+        <div class="px-2.5 py-1.5 rounded-xl bg-indigo-500/15 border border-indigo-400/35 text-[11px] text-indigo-200 space-y-0.5">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-extrabold">⏱️ Chơi thêm giờ (${ot.startTime}–${ot.endTime} · ${formatHoursCompact(ot.hours)})</span>
+            <strong class="text-white whitespace-nowrap">${info.participantCount > 0 ? `+${formatVND(info.perPerson)}/người` : formatVND(info.otTotal)}</strong>
+          </div>
+          <div class="text-[10px] text-slate-300">
+            Người chơi thêm (${info.participantCount}): <strong class="text-white">${info.participantNames.length > 0 ? info.participantNames.join(', ') : 'Chưa chọn'}</strong> · <span class="text-emerald-300">Người về sớm: 0đ</span>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  el.innerHTML = `
+    <div class="flex flex-wrap items-center gap-1.5">
+      ${courtsHtml}
+    </div>
+    ${overtimeHtml}
+  `;
+}
+
 function renderCostsTab() {
   const admin = isAdmin();
   const c = state.costs;
   const calc = calculateSessionCosts();
 
   if (admin) {
-    setInputValueIfNotFocused('costCourtsCount', c.courtsCount);
-    setInputValueIfNotFocused('costCourtHours', c.courtHours);
     setInputValueIfNotFocused('costCourtRate', c.courtRate);
     setInputValueIfNotFocused('costShuttleCount', c.shuttleCount);
     setInputValueIfNotFocused('costShuttlePrice', c.shuttlePrice);
@@ -2045,8 +2574,19 @@ function renderCostsTab() {
 
     document.getElementById('costTotalBadge').textContent = formatVND(calc.sharedTotal);
     document.getElementById('courtCostSubtotal').textContent = formatVND(calc.courtSubtotal);
+    const hoursSumEl = document.getElementById('courtHoursTotalSummary');
+    if (hoursSumEl) {
+      hoursSumEl.textContent = `${calc.courtBookings.length} sân · Tổng ${formatHoursCompact(calc.totalCourtHours)}`;
+    }
+    const otSubEl = document.getElementById('overtimeCostSubtotal');
+    if (otSubEl) {
+      otSubEl.textContent = formatVND(calc.overtimeSubtotal);
+    }
     document.getElementById('shuttleCostSubtotal').textContent = formatVND(calc.shuttleSubtotal);
     document.getElementById('extraCostSubtotal').textContent = formatVND(calc.extraSubtotal);
+
+    renderCourtBookingsList(calc);
+    renderOvertimeSessionsList(calc);
 
     const extraList = document.getElementById('extraExpensesList');
     if (extraList) {
@@ -2063,8 +2603,10 @@ function renderCostsTab() {
   } else {
     const mini = document.getElementById('userCostBreakdownMini');
     if (mini) {
-      mini.textContent = `Sân (${c.courtsCount} sân × ${c.courtHours}h): ${formatVND(calc.courtSubtotal)} · Cầu: ${formatVND(calc.shuttleSubtotal)} · Phụ phí: ${formatVND(calc.extraSubtotal)}`;
+      const otText = calc.overtimeSubtotal > 0 ? ` · Chơi thêm: ${formatVND(calc.overtimeSubtotal)}` : '';
+      mini.textContent = `Sân (${calc.courtBookings.length} sân · ${formatHoursCompact(calc.totalCourtHours)}): ${formatVND(calc.courtSubtotal)} · Cầu: ${formatVND(calc.shuttleSubtotal)} · Phụ phí: ${formatVND(calc.extraSubtotal)}${otText}`;
     }
+    renderUserCourtAndOvertimeSummary(calc);
   }
 
   document.getElementById('billTotalCost').textContent = formatVND(calc.sharedTotal);
@@ -2193,6 +2735,18 @@ function renderCostsTab() {
              </div>`
           : '';
 
+        const overtimeInfoHtml = share.overtimeFee > 0
+          ? `<div class="text-[10px] text-indigo-200 bg-indigo-500/15 border border-indigo-400/40 rounded-lg px-2 py-1 flex items-center justify-between gap-1">
+               <span>⏱️ Chơi thêm giờ (${share.overtimeDetails.map(d => `${d.startTime}–${d.endTime}`).join(', ')})</span>
+               <strong class="text-indigo-300 font-extrabold whitespace-nowrap">+${formatVND(share.overtimeFee)}</strong>
+             </div>`
+          : share.isEarlyLeaver
+          ? `<div class="text-[10px] text-slate-300 bg-[#090e1f] border border-[#1d2b56] rounded-lg px-2 py-1 flex items-center justify-between gap-1">
+               <span>🏠 Về sớm (Miễn tiền chơi thêm giờ)</span>
+               <strong class="text-emerald-400 font-bold whitespace-nowrap">0đ thêm</strong>
+             </div>`
+          : '';
+
         if (admin) {
           return `
             ${groupHeaderHtml}
@@ -2214,6 +2768,7 @@ function renderCostsTab() {
                 <span>${m.type === 'fixed' ? 'Cố định' : 'Vãng lai'}</span>
               </div>
 
+              ${overtimeInfoHtml}
               ${dateDebtInfoHtml}
 
               <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-[#1b2852]">
@@ -2269,6 +2824,7 @@ function renderCostsTab() {
               ${debtBadge}
             </div>
             <div class="text-[10px] text-slate-400">📅 Ngày đánh: <strong class="text-blue-300">${memberPlayDate}</strong></div>
+            ${overtimeInfoHtml}
             ${dateDebtInfoHtml}
             <div class="grid grid-cols-3 gap-1.5 pt-1.5 border-t border-[#1b2852] text-[11px]">
               <div class="bg-[#090e1f] rounded-lg px-2 py-1">
@@ -2358,6 +2914,12 @@ function renderCostsTab() {
       ? `<div class="mt-0.5 text-[10px] font-extrabold text-rose-300">📌 +${formatVND(share.oldDebt)} nợ tuần cũ (${share.oldDebtLogs.map(d => d.playDate.split('·')[1]?.trim() || d.playDate).join(', ')})</div>`
       : '';
 
+    const overtimeSubText = share.overtimeFee > 0
+      ? `<div class="mt-0.5 text-[10px] font-extrabold text-indigo-300">⏱️ +${formatVND(share.overtimeFee)} chơi thêm (${share.overtimeDetails.map(d => `${d.startTime}–${d.endTime}`).join(', ')})</div>`
+      : share.isEarlyLeaver
+      ? `<div class="mt-0.5 text-[10px] text-slate-400">🏠 Về sớm (không tính thêm giờ)</div>`
+      : '';
+
     return `
       ${dividerRowHtml}
       <tr class="hover:bg-[#0f1730]/60 transition-colors ${share.debtAmount === 0 ? 'opacity-80' : ''}">
@@ -2372,12 +2934,17 @@ function renderCostsTab() {
             <span>·</span>
             <span class="text-blue-300 font-semibold">📅 ${memberPlayDate}</span>
           </div>
+          ${overtimeSubText}
           ${oldDebtSubText}
         </td>
-        <td class="py-3 px-2.5 font-semibold text-slate-200 whitespace-nowrap">${formatVND(share.baseShare)}</td>
+        <td class="py-3 px-2.5 whitespace-nowrap">
+          <div class="font-semibold text-slate-200">${formatVND(share.baseShare)}</div>
+          ${share.overtimeFee > 0 ? `<div class="text-[10px] text-indigo-300 font-bold">+${formatVND(share.overtimeFee)} thêm giờ</div>` : ''}
+        </td>
         <td class="py-3 px-2.5 whitespace-nowrap">${extraFeeCell}</td>
         <td class="py-3 px-2.5 whitespace-nowrap">
           <div class="font-black text-white text-sm">${formatVND(share.totalDue)}</div>
+          ${share.overtimeFee > 0 ? `<div class="text-[10px] text-indigo-300 font-bold">Gồm ${formatVND(share.overtimeFee)} thêm giờ</div>` : ''}
           ${share.oldDebt > 0 ? `<div class="text-[10px] text-rose-300 font-bold">Gồm ${formatVND(share.oldDebt)} nợ cũ</div>` : ''}
         </td>
         <td class="py-3 px-2.5 whitespace-nowrap">${amountPaidCell}</td>
@@ -2788,36 +3355,284 @@ function renderDebtByDateSection() {
     .join('');
 }
 
-function handleCostInputChange(normalizeFloatInput) {
+// ============================================================================
+// MULTI-COURT BOOKINGS (NHIỀU SÂN KHÁC GIỜ) & OVERTIME (CHƠI THÊM GIỜ) HANDLERS
+// ============================================================================
+function handleDefaultCourtRateChange(rawVal) {
   if (!isAdmin()) return;
-  const hoursEl = document.getElementById('costCourtHours');
-  const parsedHours = parseFloatValue(hoursEl ? hoursEl.value : state.costs.courtHours);
+  state.costs.courtRate = Math.max(0, Number(rawVal) || 0);
+  saveState();
+  renderAll();
+}
 
-  state.costs.courtsCount = Math.max(0, parseFloatValue(document.getElementById('costCourtsCount')?.value));
-  state.costs.courtHours = parsedHours;
-  state.costs.courtRate = Math.max(0, Number(document.getElementById('costCourtRate')?.value) || 0);
+function applyDefaultRateToAllCourts() {
+  if (!isAdmin()) return;
+  const rate = Math.max(0, Number(document.getElementById('costCourtRate')?.value) || state.costs.courtRate || 0);
+  state.costs.courtRate = rate;
+  if (!Array.isArray(state.costs.courtBookings)) {
+    state.costs.courtBookings = buildDefaultCourtBookingsFromLegacy(state.costs, state.settings.sessionTime);
+  }
+  state.costs.courtBookings.forEach(b => {
+    b.rate = rate;
+  });
+  syncLegacyCourtStatsFromBookings(state.costs);
+  saveState();
+  renderAll();
+  showToast(`✓ Đã áp dụng giá ${formatVND(rate)}/giờ cho tất cả ${state.costs.courtBookings.length} sân!`);
+}
+
+function addCourtBooking() {
+  if (!isAdmin()) return;
+  if (!Array.isArray(state.costs.courtBookings)) {
+    state.costs.courtBookings = buildDefaultCourtBookingsFromLegacy(state.costs, state.settings.sessionTime);
+  }
+  const nextIndex = state.costs.courtBookings.length + 1;
+  const last = state.costs.courtBookings[state.costs.courtBookings.length - 1];
+  const startTime = last ? last.startTime : '18:00';
+  const endTime = last ? last.endTime : '20:00';
+  const hours = last ? last.hours : 2;
+  const rate = last ? last.rate : (state.costs.courtRate || 130000);
+
+  state.costs.courtBookings.push({
+    id: 'cb_' + Date.now() + '_' + nextIndex,
+    name: `Sân ${nextIndex}`,
+    startTime,
+    endTime,
+    hours,
+    rate
+  });
+  syncLegacyCourtStatsFromBookings(state.costs);
+  saveState();
+  renderAll();
+  showToast(`🏟️ Đã thêm Sân ${nextIndex} (${startTime}–${endTime} · ${formatHoursCompact(hours)})`);
+}
+
+function removeCourtBooking(bookingId) {
+  if (!isAdmin() || !Array.isArray(state.costs.courtBookings)) return;
+  if (state.costs.courtBookings.length <= 1) {
+    showToast('Cần giữ lại tối thiểu 1 sân trong buổi đánh!');
+    return;
+  }
+  state.costs.courtBookings = state.costs.courtBookings.filter(b => b.id !== bookingId);
+  syncLegacyCourtStatsFromBookings(state.costs);
+  saveState();
+  renderAll();
+  showToast('Đã xóa sân khỏi danh sách tính tiền.');
+}
+
+function updateCourtBookingField(bookingId, field, rawVal) {
+  if (!isAdmin() || !Array.isArray(state.costs.courtBookings)) return;
+  const booking = state.costs.courtBookings.find(b => b.id === bookingId);
+  if (!booking) return;
+
+  if (field === 'name') {
+    booking.name = String(rawVal || '').trim() || 'Sân';
+  } else if (field === 'startTime') {
+    if (parseTimeToMinutes(rawVal) !== null) {
+      booking.startTime = rawVal;
+      booking.hours = Math.max(0.25, calcHoursFromTimeRange(booking.startTime, booking.endTime));
+    }
+  } else if (field === 'endTime') {
+    if (parseTimeToMinutes(rawVal) !== null) {
+      booking.endTime = rawVal;
+      booking.hours = Math.max(0.25, calcHoursFromTimeRange(booking.startTime, booking.endTime));
+    }
+  } else if (field === 'hours') {
+    const parsed = Math.max(0.25, Math.round(parseFloatValue(rawVal) * 100) / 100);
+    booking.hours = parsed;
+    booking.endTime = addHoursToTimeStr(booking.startTime || '18:00', parsed);
+  } else if (field === 'rate') {
+    booking.rate = Math.max(0, Number(rawVal) || 0);
+  }
+
+  syncLegacyCourtStatsFromBookings(state.costs);
+  saveState();
+  renderAll();
+}
+
+function adjustCourtBookingHours(bookingId, delta) {
+  if (!isAdmin() || !Array.isArray(state.costs.courtBookings)) return;
+  const booking = state.costs.courtBookings.find(b => b.id === bookingId);
+  if (!booking) return;
+  const next = Math.max(0.25, Math.round(((Number(booking.hours) || 0) + delta) * 100) / 100);
+  booking.hours = next;
+  booking.endTime = addHoursToTimeStr(booking.startTime || '18:00', next);
+  syncLegacyCourtStatsFromBookings(state.costs);
+  saveState();
+  renderAll();
+}
+
+function applySampleMultiCourtPreset() {
+  if (!isAdmin()) return;
+  const rate = Math.max(0, Number(state.costs.courtRate) || 130000);
+  state.costs.courtBookings = [
+    { id: 'cb_1', name: 'Sân 1', startTime: '18:00', endTime: '20:00', hours: 2, rate },
+    { id: 'cb_2', name: 'Sân 2', startTime: '18:30', endTime: '20:00', hours: 1.5, rate },
+    { id: 'cb_3', name: 'Sân 3', startTime: '18:30', endTime: '20:00', hours: 1.5, rate }
+  ];
+  syncLegacyCourtStatsFromBookings(state.costs);
+  saveState();
+  renderAll();
+  showToast('⚡ Đã áp dụng mẫu 3 sân: Sân 1 (18:00–20:00) · Sân 2 & 3 (18:30–20:00)!');
+}
+
+function scrollToOvertimeConfig() {
+  const box = document.getElementById('overtimeConfigBox');
+  if (!box) return;
+  box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  box.classList.add('ring-2', 'ring-indigo-400');
+  setTimeout(() => {
+    box.classList.remove('ring-2', 'ring-indigo-400');
+  }, 1600);
+  if (!Array.isArray(state.costs.overtimeSessions) || state.costs.overtimeSessions.length === 0) {
+    addOvertimeSession();
+  }
+}
+
+function addOvertimeSession() {
+  if (!isAdmin()) return;
+  if (!Array.isArray(state.costs.overtimeSessions)) state.costs.overtimeSessions = [];
+
+  // Lấy giờ kết thúc muộn nhất của các sân chính làm giờ bắt đầu ca chơi thêm
+  let latestEndMins = 20 * 60;
+  if (Array.isArray(state.costs.courtBookings) && state.costs.courtBookings.length > 0) {
+    const endMinsList = state.costs.courtBookings
+      .map(b => parseTimeToMinutes(b.endTime))
+      .filter(v => v !== null);
+    if (endMinsList.length > 0) {
+      latestEndMins = Math.max(...endMinsList);
+    }
+  }
+  const prevOt = state.costs.overtimeSessions[state.costs.overtimeSessions.length - 1];
+  const startTime = prevOt && prevOt.endTime ? prevOt.endTime : minutesToTimeStr(latestEndMins);
+  const hours = 1;
+  const endTime = addHoursToTimeStr(startTime, hours);
+  const courtRate = Math.max(0, Number(state.costs.courtRate) || 130000);
+
+  state.costs.overtimeSessions.push({
+    id: 'ot_' + Date.now() + '_' + (state.costs.overtimeSessions.length + 1),
+    startTime,
+    endTime,
+    courtsCount: 1,
+    hours,
+    courtRate,
+    shuttleCount: 0,
+    memberIds: []
+  });
+
+  saveState();
+  renderAll();
+  showToast(`⏱️ Đã thêm ca chơi thêm giờ (${startTime}–${endTime}). Hãy chạm chọn người ở lại chơi thêm!`);
+}
+
+function removeOvertimeSession(otId) {
+  if (!isAdmin() || !Array.isArray(state.costs.overtimeSessions)) return;
+  state.costs.overtimeSessions = state.costs.overtimeSessions.filter(ot => ot.id !== otId);
+  sortMembersByPaymentStatusInPlace();
+  saveState();
+  renderAll();
+  showToast('Đã xóa ca chơi thêm giờ.');
+}
+
+function updateOvertimeField(otId, field, rawVal) {
+  if (!isAdmin() || !Array.isArray(state.costs.overtimeSessions)) return;
+  const ot = state.costs.overtimeSessions.find(item => item.id === otId);
+  if (!ot) return;
+
+  if (field === 'startTime') {
+    if (parseTimeToMinutes(rawVal) !== null) {
+      ot.startTime = rawVal;
+      ot.hours = Math.max(0.25, calcHoursFromTimeRange(ot.startTime, ot.endTime));
+    }
+  } else if (field === 'endTime') {
+    if (parseTimeToMinutes(rawVal) !== null) {
+      ot.endTime = rawVal;
+      ot.hours = Math.max(0.25, calcHoursFromTimeRange(ot.startTime, ot.endTime));
+    }
+  } else if (field === 'hours') {
+    const parsed = Math.max(0.25, Math.round(parseFloatValue(rawVal) * 100) / 100);
+    ot.hours = parsed;
+    ot.endTime = addHoursToTimeStr(ot.startTime || '20:00', parsed);
+  } else if (field === 'courtsCount') {
+    ot.courtsCount = Math.max(1, Math.round(Number(rawVal) || 1));
+  } else if (field === 'courtRate') {
+    ot.courtRate = Math.max(0, Number(rawVal) || 0);
+  } else if (field === 'shuttleCount') {
+    ot.shuttleCount = Math.max(0, Number(rawVal) || 0);
+  }
+
+  sortMembersByPaymentStatusInPlace();
+  saveState();
+  renderAll();
+}
+
+function adjustOvertimeHours(otId, delta) {
+  if (!isAdmin() || !Array.isArray(state.costs.overtimeSessions)) return;
+  const ot = state.costs.overtimeSessions.find(item => item.id === otId);
+  if (!ot) return;
+  const next = Math.max(0.25, Math.round(((Number(ot.hours) || 0) + delta) * 100) / 100);
+  ot.hours = next;
+  ot.endTime = addHoursToTimeStr(ot.startTime || '20:00', next);
+  sortMembersByPaymentStatusInPlace();
+  saveState();
+  renderAll();
+}
+
+function adjustOvertimeShuttles(otId, delta) {
+  if (!isAdmin() || !Array.isArray(state.costs.overtimeSessions)) return;
+  const ot = state.costs.overtimeSessions.find(item => item.id === otId);
+  if (!ot) return;
+  ot.shuttleCount = Math.max(0, (Number(ot.shuttleCount) || 0) + delta);
+  sortMembersByPaymentStatusInPlace();
+  saveState();
+  renderAll();
+}
+
+function toggleOvertimeMember(otId, memberId) {
+  if (!isAdmin() || !Array.isArray(state.costs.overtimeSessions)) return;
+  const ot = state.costs.overtimeSessions.find(item => item.id === otId);
+  if (!ot) return;
+  if (!Array.isArray(ot.memberIds)) ot.memberIds = [];
+  const idx = ot.memberIds.indexOf(memberId);
+  if (idx >= 0) {
+    ot.memberIds.splice(idx, 1);
+  } else {
+    ot.memberIds.push(memberId);
+  }
+  sortMembersByPaymentStatusInPlace();
+  saveState();
+  renderAll();
+}
+
+function setAllOvertimeMembers(otId, selectAll) {
+  if (!isAdmin() || !Array.isArray(state.costs.overtimeSessions)) return;
+  const ot = state.costs.overtimeSessions.find(item => item.id === otId);
+  if (!ot) return;
+  ot.memberIds = selectAll ? state.members.map(m => m.id) : [];
+  sortMembersByPaymentStatusInPlace();
+  saveState();
+  renderAll();
+}
+
+function handleCostInputChange() {
+  if (!isAdmin()) return;
+  const rateEl = document.getElementById('costCourtRate');
+  if (rateEl) state.costs.courtRate = Math.max(0, Number(rateEl.value) || 0);
   state.costs.shuttleCount = Math.max(0, parseFloatValue(document.getElementById('costShuttleCount')?.value));
   state.costs.shuttlePrice = Math.max(0, Number(document.getElementById('costShuttlePrice')?.value) || 0);
   state.costs.splitMode = document.getElementById('costSplitMode')?.value || 'equal';
   state.costs.roundThousand = Boolean(document.getElementById('costRoundThousand')?.checked);
 
-  if (normalizeFloatInput && hoursEl) {
-    hoursEl.value = parsedHours;
-  }
-
+  syncLegacyCourtStatsFromBookings(state.costs);
   saveState();
   renderAll();
 }
 
 function adjustCourtHours(delta) {
   if (!isAdmin()) return;
-  const current = parseFloatValue(state.costs.courtHours);
-  const next = Math.max(0.25, Math.round((current + delta) * 100) / 100);
-  state.costs.courtHours = next;
-  const hoursEl = document.getElementById('costCourtHours');
-  if (hoursEl) hoursEl.value = next;
-  saveState();
-  renderAll();
+  if (Array.isArray(state.costs.courtBookings) && state.costs.courtBookings.length > 0) {
+    adjustCourtBookingHours(state.costs.courtBookings[0].id, delta);
+  }
 }
 
 function adjustShuttleCount(delta) {
@@ -2972,21 +3787,42 @@ function copyBillSummaryToClipboard() {
     `📅 Ngày: ${state.settings.sessionDate} (${state.settings.sessionTime})`,
     `📍 Sân: ${state.settings.courtLocation}`,
     `--------------------------------`,
-    `1. Tiền sân (${state.costs.courtsCount} sân × ${state.costs.courtHours}h): ${formatVND(calc.courtSubtotal)}`,
-    `2. Tiền cầu (${state.costs.shuttleCount} quả × ${formatVND(state.costs.shuttlePrice)}): ${formatVND(calc.shuttleSubtotal)}`,
-    `3. Chi phí phụ: ${formatVND(calc.extraSubtotal)}`,
-    `👉 TỔNG CHI PHÍ: ${formatVND(calc.sharedTotal)}`,
-    `✅ ĐÃ THU: ${formatVND(calc.totalCollected)} | ❌ CÒN NỢ: ${formatVND(calc.totalRemaining)}`,
-    `--------------------------------`,
-    `📋 DANH SÁCH CHƯA TRẢ & ĐÃ TRẢ (${sortedMembers.length} thành viên):`
+    `1. Tiền sân (${calc.courtBookings.length} sân · Tổng ${formatHoursCompact(calc.totalCourtHours)}): ${formatVND(calc.courtSubtotal)}`
   ];
 
+  calc.courtBookings.forEach(b => {
+    const sub = Math.round((Number(b.hours) || 0) * (Number(b.rate) || 0));
+    lines.push(`   • ${b.name} (${b.startTime}–${b.endTime} · ${formatHoursCompact(b.hours)}): ${formatVND(sub)}`);
+  });
+
+  lines.push(`2. Tiền cầu (${state.costs.shuttleCount} quả × ${formatVND(state.costs.shuttlePrice)}): ${formatVND(calc.shuttleSubtotal)}`);
+  lines.push(`3. Chi phí phụ: ${formatVND(calc.extraSubtotal)}`);
+
+  if (calc.overtimeSessions.length > 0) {
+    lines.push(`4. Chơi thêm giờ (Chỉ tính người ở lại · Miễn người về sớm): ${formatVND(calc.overtimeSubtotal)}`);
+    calc.overtimeSessions.forEach((ot, idx) => {
+      const info = calc.overtimeBreakdowns[ot.id] || { otTotal: 0, participantCount: 0, perPerson: 0, participantNames: [] };
+      const namesTxt = info.participantNames.length > 0 ? info.participantNames.join(', ') : 'Chưa chọn';
+      lines.push(`   • Ca #${idx + 1} (${ot.startTime}–${ot.endTime} · ${formatHoursCompact(ot.hours)}): +${formatVND(info.perPerson)}/người [${namesTxt}]`);
+    });
+  }
+
+  lines.push(`👉 TỔNG CHI PHÍ: ${formatVND(calc.sharedTotal)}`);
+  lines.push(`✅ ĐÃ THU: ${formatVND(calc.totalCollected)} | ❌ CÒN NỢ: ${formatVND(calc.totalRemaining)}`);
+  lines.push(`--------------------------------`);
+  lines.push(`📋 DANH SÁCH CHƯA TRẢ & ĐÃ TRẢ (${sortedMembers.length} thành viên):`);
+
   sortedMembers.forEach((m, i) => {
-    const s = calc.memberShares[m.id] || { totalDue: 0, amountPaid: 0, debtAmount: 0 };
+    const s = calc.memberShares[m.id] || { totalDue: 0, amountPaid: 0, debtAmount: 0, overtimeFee: 0, isEarlyLeaver: false, oldDebt: 0 };
     const statusText = s.debtAmount === 0
       ? `✅ Đã trả đủ (${formatVND(s.amountPaid)})`
       : `⏳ CHƯA TRẢ: Còn nợ ${formatVND(s.debtAmount)} (Đã đóng: ${formatVND(s.amountPaid)})`;
-    lines.push(`${i + 1}. ${m.name} (${m.playDate || state.settings.sessionDate}) — Phải đóng: ${formatVND(s.totalDue)} → ${statusText}`);
+    const extraNotes = [];
+    if (s.overtimeFee > 0) extraNotes.push(`+${formatVND(s.overtimeFee)} chơi thêm`);
+    else if (s.isEarlyLeaver) extraNotes.push(`về sớm 0đ thêm`);
+    if (s.oldDebt > 0) extraNotes.push(`+${formatVND(s.oldDebt)} nợ cũ`);
+    const noteSuffix = extraNotes.length > 0 ? ` [${extraNotes.join(' · ')}]` : '';
+    lines.push(`${i + 1}. ${m.name} — Phải đóng: ${formatVND(s.totalDue)}${noteSuffix} → ${statusText}`);
   });
 
   const unpaidDebtLogs = (state.debtLogs || []).filter(d => d && d.status !== 'paid');
@@ -2999,7 +3835,7 @@ function copyBillSummaryToClipboard() {
   }
 
   copyTextCrossBrowser(lines.join('\n'), () => {
-    showToast('Đã copy bảng tổng hợp Đã trả & Sổ nợ theo ngày! Bạn có thể dán ngay vào nhóm Zalo.');
+    showToast('Đã copy bảng tổng hợp Chi phí nhiều sân, Chơi thêm giờ & Tiền nợ! Dán ngay vào nhóm Zalo.');
   });
 }
 
@@ -3152,9 +3988,10 @@ function resetNewWeekSession() {
   state.settings.sessionDateISO = nextWeekISO;
   state.settings.sessionDate = formatISOToVietnameseDate(nextWeekISO);
 
-  // Làm mới danh sách tuần mới và tỉ số trận đấu (tiền nợ tuần cũ vẫn được giữ nguyên và hiển thị ở bảng Tài chính!)
+  // Làm mới danh sách tuần mới, ca chơi thêm giờ và tỉ số trận đấu (tiền nợ tuần cũ vẫn được giữ nguyên và hiển thị ở bảng Tài chính!)
   state.members = [];
   state.matches = [];
+  state.costs.overtimeSessions = [];
   saveState();
   renderAll();
   const debtMsg =

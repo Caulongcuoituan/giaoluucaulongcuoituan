@@ -129,9 +129,36 @@
     }
   ],
   "costs": {
-    "courtsCount": 1,
+    "courtsCount": 3,
     "courtHours": 5,
     "courtRate": 130000,
+    "courtBookings": [
+      {
+        "id": "cb_1",
+        "name": "Sân 1",
+        "startTime": "18:00",
+        "endTime": "20:00",
+        "hours": 2,
+        "rate": 130000
+      },
+      {
+        "id": "cb_2",
+        "name": "Sân 2",
+        "startTime": "18:30",
+        "endTime": "20:00",
+        "hours": 1.5,
+        "rate": 130000
+      },
+      {
+        "id": "cb_3",
+        "name": "Sân 3",
+        "startTime": "18:30",
+        "endTime": "20:00",
+        "hours": 1.5,
+        "rate": 130000
+      }
+    ],
+    "overtimeSessions": [],
     "shuttleCount": 8,
     "shuttlePrice": 26000,
     "extraExpenses": [],
