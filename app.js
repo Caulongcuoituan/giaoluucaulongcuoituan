@@ -200,6 +200,9 @@ function getDefaultState() {
 let state = loadState();
 let currentTab = 'overview';
 let currentMatchFilter = 'ALL';
+let currentPaymentFilter = 'ALL'; // 'ALL' | 'UNPAID' | 'PAID'
+let quickMemberSearchQuery = '';
+let expandedFinanceEditorId = null;
 let currentHeroSlide = 0;
 let heroAutoplayInterval = null;
 let isHeroPlaying = true;
@@ -418,7 +421,9 @@ function handleIncomingCloudState(jsonText) {
           activeEl.id !== 'newExpenseAmount' &&
           activeEl.id !== 'debtLogMemberName' &&
           activeEl.id !== 'debtLogAmountInput' &&
-          activeEl.id !== 'debtLogNoteInput'));
+          activeEl.id !== 'debtLogNoteInput' &&
+          activeEl.id !== 'costMemberSearch' &&
+          activeEl.id !== 'overviewMemberSearch'));
 
     if (isEditingTableInput) return;
 
@@ -1260,6 +1265,109 @@ function toggleHeroAutoplay() {
 // ============================================================================
 // TAB 1: OVERVIEW (BENTO GRID)
 // ============================================================================
+function formatShortMoney(amount) {
+  const num = Math.round(Number(amount) || 0);
+  if (num >= 1000 && num % 1000 === 0) {
+    return `${num / 1000}k`;
+  }
+  if (num >= 1000 && num % 100 === 0) {
+    return `${Math.round((num / 1000) * 10) / 10}k`;
+  }
+  return formatVND(num);
+}
+
+function formatOvertimeTimeRangesUnique(overtimeDetails) {
+  if (!Array.isArray(overtimeDetails) || overtimeDetails.length === 0) return '';
+  const counts = {};
+  const order = [];
+  overtimeDetails.forEach(d => {
+    const key = `${d.startTime}–${d.endTime}`;
+    if (!counts[key]) {
+      counts[key] = 0;
+      order.push(key);
+    }
+    counts[key]++;
+  });
+  return order.map(k => (counts[k] > 1 ? `${k} ×${counts[k]}` : k)).join(', ');
+}
+
+function setPaymentStatusFilter(mode) {
+  currentPaymentFilter = mode;
+  renderOverviewTab();
+  renderCostsTab();
+}
+
+function handleQuickMemberSearch(query) {
+  quickMemberSearchQuery = String(query || '');
+  const ovSearch = document.getElementById('overviewMemberSearch');
+  const costSearch = document.getElementById('costMemberSearch');
+  if (ovSearch && document.activeElement !== ovSearch) ovSearch.value = quickMemberSearchQuery;
+  if (costSearch && document.activeElement !== costSearch) costSearch.value = quickMemberSearchQuery;
+  renderOverviewTab();
+  renderCostsTab();
+}
+
+function toggleMemberQuickPaid(memberId) {
+  if (!isAdmin()) return;
+  const member = state.members.find(m => m.id === memberId);
+  if (!member) return;
+  const calc = calculateSessionCosts();
+  const share = calc.memberShares[memberId];
+  const isCurrentlyPaid = share && share.debtAmount === 0;
+
+  if (!isCurrentlyPaid) {
+    setMemberFullPaid(memberId);
+  } else {
+    member.amountPaid = 0;
+    member.paid = false;
+    sortMembersByPaymentStatusInPlace();
+    saveState();
+    renderAll();
+    const updatedCalc = calculateSessionCosts();
+    const updatedShare = updatedCalc.memberShares[memberId];
+    showToast(`⏳ Đã bỏ tick ${member.name} → Còn nợ ${formatVND(updatedShare ? updatedShare.debtAmount : 0)}`);
+  }
+}
+
+function toggleMemberFinanceDrawer(memberId) {
+  expandedFinanceEditorId = expandedFinanceEditorId === memberId ? null : memberId;
+  renderCostsTab();
+}
+
+function scrollToCostConfig() {
+  const el = document.getElementById('costConfigSection');
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  el.classList.add('ring-2', 'ring-blue-400', 'rounded-2xl');
+  setTimeout(() => {
+    el.classList.remove('ring-2', 'ring-blue-400', 'rounded-2xl');
+  }, 1400);
+}
+
+function renderPaymentFilterPillsHtml(unpaidCount, paidCount, totalCount) {
+  const mkBtn = (mode, label, activeClasses) => {
+    const isActive = currentPaymentFilter === mode;
+    return `
+      <button
+        type="button"
+        onclick="setPaymentStatusFilter('${mode}')"
+        class="px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap border ${
+          isActive
+            ? activeClasses
+            : 'bg-[#090e1f] border-[#1f2e5c] text-slate-400 hover:text-white hover:border-slate-500'
+        }"
+      >
+        ${label}
+      </button>
+    `;
+  };
+  return `
+    ${mkBtn('ALL', `Tất cả (${totalCount})`, 'bg-blue-600/30 border-blue-400 text-white')}
+    ${mkBtn('UNPAID', `⏳ Nợ (${unpaidCount})`, 'bg-rose-500/25 border-rose-400 text-rose-200')}
+    ${mkBtn('PAID', `✓ Đã đóng (${paidCount})`, 'bg-emerald-500/25 border-emerald-400 text-emerald-200')}
+  `;
+}
+
 function renderOverviewTab() {
   const costData = calculateSessionCosts();
 
@@ -1346,32 +1454,143 @@ function renderOverviewTab() {
     : 0;
   document.getElementById('overviewPaidBar').style.width = `${paidPct}%`;
 
-  const memberListEl = document.getElementById('overviewMemberList');
+  const qAvg = document.getElementById('overviewQuickAvg');
+  const qCol = document.getElementById('overviewQuickCollected');
+  const qDebt = document.getElementById('overviewQuickDebt');
+  if (qAvg) qAvg.textContent = formatVND(costData.avgPerPerson);
+  if (qCol) qCol.textContent = formatVND(costData.totalCollected);
+  if (qDebt) qDebt.textContent = formatVND(costData.totalRemaining);
+
+  const admin = isAdmin();
   const sortedOverviewMembers = getSortedMembersForFinance(costData);
-  memberListEl.innerHTML = sortedOverviewMembers.map(m => {
-    const info = costData.memberShares[m.id] || { totalDue: 0, amountPaid: 0, debtAmount: 0 };
-    const genderBadge = m.gender === 'M'
-      ? '<span class="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px] font-bold shrink-0">Nam</span>'
-      : '<span class="px-1.5 py-0.5 rounded bg-pink-500/20 text-pink-300 text-[10px] font-bold shrink-0">Nữ</span>';
+  const debtOnlyMembers = costData.debtOnlyMembers || [];
+  const unpaidActiveCount = sortedOverviewMembers.filter(m => (costData.memberShares[m.id]?.debtAmount || 0) > 0).length;
+  const unpaidCount = unpaidActiveCount + debtOnlyMembers.length;
+  const paidCount = sortedOverviewMembers.length - unpaidActiveCount;
+  const totalCount = sortedOverviewMembers.length + debtOnlyMembers.length;
 
-    const statusPill = info.debtAmount === 0
-      ? `<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold whitespace-nowrap">✓ Đã trả đủ</span>`
-      : `<span class="px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/40 text-rose-300 text-[10px] font-extrabold whitespace-nowrap">Nợ ${formatVND(info.debtAmount)}</span>`;
+  const filterBarEl = document.getElementById('overviewPaymentFilterBar');
+  if (filterBarEl) {
+    filterBarEl.innerHTML = renderPaymentFilterPillsHtml(unpaidCount, paidCount, totalCount);
+  }
 
-    return `
-      <div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[#0f162e] border ${info.debtAmount > 0 ? 'border-rose-500/30' : 'border-[#1c2952]'}">
-        <div class="flex items-center gap-1.5 min-w-0">
-          ${genderBadge}
-          <span class="text-xs font-bold text-white truncate">${m.name}</span>
-          <span class="text-[10px] text-slate-400 font-semibold shrink-0">(${m.skill})</span>
+  const searchClean = quickMemberSearchQuery.trim().toLowerCase();
+  const matchesFilter = (isUnpaid, name) => {
+    if (currentPaymentFilter === 'UNPAID' && !isUnpaid) return false;
+    if (currentPaymentFilter === 'PAID' && isUnpaid) return false;
+    if (searchClean && !name.toLowerCase().includes(searchClean)) return false;
+    return true;
+  };
+
+  const memberListEl = document.getElementById('overviewMemberList');
+  if (!memberListEl) return;
+
+  const filteredDebtOnly = debtOnlyMembers.filter(dm => matchesFilter(true, dm.name));
+  const filteredActive = sortedOverviewMembers.filter(m => {
+    const info = costData.memberShares[m.id] || { debtAmount: 0 };
+    return matchesFilter(info.debtAmount > 0, m.name);
+  });
+
+  if (filteredDebtOnly.length === 0 && filteredActive.length === 0) {
+    memberListEl.innerHTML = `<div class="text-center py-5 px-3 rounded-xl bg-[#0f162e] border border-[#1c2952] text-xs text-slate-400">Không có thành viên nào phù hợp bộ lọc hiện tại.</div>`;
+    return;
+  }
+
+  const debtOnlyHtml = filteredDebtOnly
+    .map(dm => {
+      return `
+        <div class="flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl bg-[#180d1e] border-l-4 border-l-rose-500 border-y border-r border-rose-500/35">
+          <div class="flex items-center gap-2 min-w-0">
+            ${
+              admin
+                ? `<button type="button" onclick="settleOldDebtForMemberName('${dm.name.replace(/'/g, "\\'")}')" class="w-6 h-6 rounded-lg border-2 border-rose-400/70 hover:bg-emerald-500/25 hover:border-emerald-400 flex items-center justify-center text-[11px] text-rose-300 shrink-0" title="Tick đã thu nợ cũ">☐</button>`
+                : `<span class="w-2 h-2 rounded-full bg-rose-400 shrink-0"></span>`
+            }
+            <div class="min-w-0">
+              <div class="text-xs font-extrabold text-white truncate">${dm.name}</div>
+              <div class="text-[10px] text-rose-300 font-semibold truncate">📌 Nợ tuần cũ</div>
+            </div>
+          </div>
+          <div class="text-right shrink-0">
+            <div class="text-xs font-black text-rose-400 whitespace-nowrap">${formatVND(dm.totalOldDebt)}</div>
+            <div class="text-[9px] text-rose-300/80">Nợ cũ</div>
+          </div>
         </div>
-        <div class="flex items-center gap-2 shrink-0">
-          <span class="text-[11px] font-bold text-slate-200 whitespace-nowrap">Đóng: ${formatVND(info.totalDue)}</span>
-          ${statusPill}
+      `;
+    })
+    .join('');
+
+  let renderedPaidSeparator = false;
+  const activeHtml = filteredActive
+    .map((m, idx) => {
+      const info = costData.memberShares[m.id] || { baseShare: 0, overtimeFee: 0, oldDebt: 0, totalDue: 0, amountPaid: 0, debtAmount: 0, isEarlyLeaver: false };
+      const isPaid = info.debtAmount === 0;
+
+      let dividerHtml = '';
+      if (isPaid && !renderedPaidSeparator && currentPaymentFilter === 'ALL' && unpaidCount > 0) {
+        renderedPaidSeparator = true;
+        dividerHtml = `
+          <div class="pt-1.5 pb-0.5 flex items-center gap-2">
+            <div class="h-px flex-1 bg-emerald-500/30"></div>
+            <span class="text-[10px] font-extrabold text-emerald-400 uppercase">✓ Đã đóng (${paidCount})</span>
+            <div class="h-px flex-1 bg-emerald-500/30"></div>
+          </div>
+        `;
+      }
+
+      const subTags = [];
+      if (info.overtimeFee > 0) subTags.push(`<span class="text-indigo-300 font-bold">⏱️+${formatShortMoney(info.overtimeFee)}</span>`);
+      else if (info.isEarlyLeaver) subTags.push(`<span class="text-slate-400">🏠Về sớm</span>`);
+      if (info.oldDebt > 0) subTags.push(`<span class="text-rose-300 font-bold">Nợ cũ +${formatShortMoney(info.oldDebt)}</span>`);
+      if (info.amountPaid > 0 && info.debtAmount > 0) subTags.push(`<span class="text-emerald-400">Đã trả ${formatShortMoney(info.amountPaid)}</span>`);
+
+      const tickBtn = admin
+        ? `<button
+             type="button"
+             onclick="toggleMemberQuickPaid('${m.id}')"
+             class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all border-2 ${
+               isPaid
+                 ? 'bg-emerald-500 border-emerald-400 text-slate-950 font-black text-sm shadow-sm shadow-emerald-500/30'
+                 : 'bg-[#090e1f] border-slate-500 hover:border-emerald-400 hover:bg-emerald-500/15 text-transparent hover:text-emerald-300 text-xs'
+             }"
+             title="${isPaid ? 'Đã đóng đủ (Chạm để hoàn tác)' : 'Chạm để tick Đã trả đủ'}"
+           >✓</button>`
+        : `<span class="w-2 h-2 rounded-full shrink-0 ${isPaid ? 'bg-emerald-400' : 'bg-rose-400'}"></span>`;
+
+      return `
+        ${dividerHtml}
+        <div class="flex items-center justify-between gap-2 px-2.5 py-2 rounded-xl border-l-4 border-y border-r transition-colors ${
+          isPaid
+            ? 'bg-[#0a1324] border-l-emerald-500 border-emerald-500/20 opacity-80'
+            : 'bg-[#0f162e] border-l-rose-500 border-[#1c2952] hover:border-blue-500/40'
+        }">
+          <div class="flex items-center gap-2 min-w-0 flex-1">
+            ${tickBtn}
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-1.5 min-w-0">
+                <span class="text-[11px] font-bold text-slate-500 shrink-0">${idx + 1}.</span>
+                <span class="text-xs sm:text-sm font-extrabold ${isPaid ? 'text-emerald-200' : 'text-white'} truncate">${m.name}</span>
+                <span class="px-1 py-0.5 rounded text-[9px] font-bold shrink-0 ${m.gender === 'M' ? 'bg-blue-500/20 text-blue-300' : 'bg-pink-500/20 text-pink-300'}">${m.gender === 'M' ? 'Nam' : 'Nữ'}</span>
+              </div>
+              ${subTags.length > 0 ? `<div class="text-[10px] flex items-center gap-1.5 flex-wrap mt-0.5">${subTags.join(' <span class="text-slate-600">·</span> ')}</div>` : ''}
+            </div>
+          </div>
+
+          <div class="text-right shrink-0">
+            ${
+              isPaid
+                ? `<div class="text-xs sm:text-sm font-extrabold text-emerald-400 whitespace-nowrap">✓ ${formatVND(info.amountPaid)}</div>
+                   <div class="text-[9px] text-emerald-300/80 font-semibold">Đã đóng</div>`
+                : `<div class="text-xs sm:text-sm font-black text-rose-400 whitespace-nowrap">${formatVND(info.debtAmount)}</div>
+                   <div class="text-[9px] text-slate-400 font-semibold">Còn nợ</div>`
+            }
+          </div>
         </div>
-      </div>
-    `;
-  }).join('');
+      `;
+    })
+    .join('');
+
+  memberListEl.innerHTML = debtOnlyHtml + activeHtml;
 }
 
 // ============================================================================
@@ -2621,340 +2840,257 @@ function renderCostsTab() {
   const unpaidCount = unpaidActiveCount + debtOnlyMembers.length;
   const paidCount = sortedMembers.length - unpaidActiveCount;
 
+  const totalCount = sortedMembers.length + debtOnlyMembers.length;
+
   const sortBanner = document.getElementById('costSortStatusBanner');
   if (sortBanner) {
     sortBanner.innerHTML = `
-      <div class="flex flex-wrap items-center gap-2">
-        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-500/20 border border-rose-500/40 text-rose-300 font-extrabold">
-          ⏳ Chưa trả tiền: ${unpaidCount} người (Xếp đầu bảng)
-        </span>
-        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold">
-          ✓ Đã trả đủ: ${paidCount} người (Xếp cuối bảng)
-        </span>
-      </div>
-      <span class="text-slate-400 font-medium">📅 Ngày đánh: <strong class="text-amber-300">${state.settings.sessionDate}</strong></span>
+      ${renderPaymentFilterPillsHtml(unpaidCount, paidCount, totalCount)}
+      <span class="hidden sm:inline-flex items-center px-2 py-1 rounded-lg bg-[#090e1f] border border-[#1d2b56] text-[10px] text-amber-300 font-bold">
+        📅 ${state.settings.sessionDate}
+      </span>
     `;
   }
 
-  // Render các thành viên còn nợ từ tuần cũ nhưng chưa đăng ký vào tuần mới (để không bao giờ mất nợ tuần cũ)
-  const mobileDebtOnlyHtml = debtOnlyMembers.map((dm, dIdx) => {
-    const genderText = dm.gender === 'M' ? 'Nam' : 'Nữ';
-    const genderClass = dm.gender === 'M' ? 'bg-blue-500/20 text-blue-300' : 'bg-pink-500/20 text-pink-300';
-    const datesStr = dm.logs.map(l => l.playDate).join(', ');
-    return `
-      <div class="p-3 rounded-xl bg-[#180d1e] border border-rose-500/50 space-y-2">
-        <div class="flex items-center justify-between gap-2">
-          <div class="flex items-center gap-1.5 min-w-0">
-            <span class="px-1.5 py-0.5 rounded bg-rose-500/30 text-rose-200 text-[10px] font-black">NỢ CŨ</span>
-            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${genderClass}">${genderText}</span>
-            <span class="font-extrabold text-white text-sm truncate">${dm.name}</span>
-          </div>
-          <span class="px-2.5 py-0.5 rounded-full bg-rose-500/25 border border-rose-500/50 text-rose-300 text-xs font-extrabold whitespace-nowrap">
-            Nợ tuần cũ: ${formatVND(dm.totalOldDebt)}
-          </span>
+  const searchClean = quickMemberSearchQuery.trim().toLowerCase();
+  const matchesFilter = (isUnpaid, name) => {
+    if (currentPaymentFilter === 'UNPAID' && !isUnpaid) return false;
+    if (currentPaymentFilter === 'PAID' && isUnpaid) return false;
+    if (searchClean && !name.toLowerCase().includes(searchClean)) return false;
+    return true;
+  };
+
+  const filteredDebtOnly = debtOnlyMembers.filter(dm => matchesFilter(true, dm.name));
+  const filteredMembers = sortedMembers.filter(m => {
+    const sh = calc.memberShares[m.id] || { debtAmount: 0 };
+    return matchesFilter(sh.debtAmount > 0, m.name);
+  });
+
+  // DANH SÁCH THỐNG NHẤT KHÔNG KÉO NGANG (CHẠY CỰC GỌN TRÊN CẢ ĐIỆN THOẠI & MÁY TÍNH)
+  const unifiedListEl = document.getElementById('costMemberUnifiedList');
+  if (unifiedListEl) {
+    if (filteredDebtOnly.length === 0 && filteredMembers.length === 0) {
+      unifiedListEl.innerHTML = `
+        <div class="text-center py-7 px-3 rounded-xl bg-[#0f1730] border border-[#1f2e5c] text-xs text-slate-400">
+          ${
+            sortedMembers.length === 0 && debtOnlyMembers.length === 0
+              ? 'Chưa có thành viên đăng ký trong tuần này.'
+              : 'Không tìm thấy thành viên phù hợp bộ lọc hiện tại.'
+          }
         </div>
-        <div class="flex items-center justify-between gap-2 text-[11px] text-rose-200/90 pt-1 border-t border-rose-500/20">
-          <span>📅 Ngày nợ: <strong>${datesStr}</strong></span>
-          ${admin ? `<button onclick="settleOldDebtForMemberName('${dm.name.replace(/'/g, "\\'")}')" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold whitespace-nowrap">✓ Đã thu nợ cũ</button>` : ''}
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  const desktopDebtOnlyHtml = debtOnlyMembers.map((dm, dIdx) => {
-    const datesStr = dm.logs.map(l => l.playDate).join(', ');
-    const actionCol = admin
-      ? `<td class="py-3 px-2.5 text-right whitespace-nowrap">
-           <button onclick="settleOldDebtForMemberName('${dm.name.replace(/'/g, "\\'")}')" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold whitespace-nowrap">
-             ✓ Thu nợ cũ
-           </button>
-         </td>`
-      : '';
-    return `
-      <tr class="bg-rose-950/20 hover:bg-rose-950/30 transition-colors">
-        <td class="py-3 px-2.5 text-xs font-black text-rose-400 whitespace-nowrap">Nợ cũ</td>
-        <td class="py-3 px-2.5 whitespace-nowrap">
-          <div class="font-bold text-white flex items-center gap-1.5">
-            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${dm.gender === 'M' ? 'bg-blue-500/20 text-blue-300' : 'bg-pink-500/20 text-pink-300'}">${dm.gender === 'M' ? 'Nam' : 'Nữ'}</span>
-            <span>${dm.name}</span>
-            <span class="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px] font-extrabold">Chưa ĐK tuần mới</span>
-          </div>
-          <div class="text-[10px] text-rose-300 font-semibold mt-0.5">📅 Ngày nợ: ${datesStr}</div>
-        </td>
-        <td class="py-3 px-2.5 text-xs text-slate-400 whitespace-nowrap">0đ (Tuần mới)</td>
-        <td class="py-3 px-2.5 text-xs text-rose-300 font-bold whitespace-nowrap">+${formatVND(dm.totalOldDebt)} nợ cũ</td>
-        <td class="py-3 px-2.5 font-black text-white text-sm whitespace-nowrap">${formatVND(dm.totalOldDebt)}</td>
-        <td class="py-3 px-2.5 text-xs text-slate-400 whitespace-nowrap">0đ</td>
-        <td class="py-3 px-2.5 whitespace-nowrap">
-          <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-extrabold whitespace-nowrap">
-            Nợ ${formatVND(dm.totalOldDebt)}
-          </span>
-        </td>
-        ${actionCol}
-      </tr>
-    `;
-  }).join('');
-
-  // 1. Render Mobile Compact Debt & Payment Cards (Zero Horizontal Scroll, Unpaid First)
-  const mobileCostList = document.getElementById('costMemberMobileList');
-  if (mobileCostList) {
-    if (sortedMembers.length === 0 && debtOnlyMembers.length === 0) {
-      mobileCostList.innerHTML = `<div class="text-center py-6 px-3 rounded-xl bg-[#0f1730] border border-[#1f2e5c] text-xs text-slate-400">Chưa có thành viên đăng ký trong tuần này.</div>`;
-    } else {
-      let hasRenderedPaidDivider = false;
-      const activeCardsHtml = sortedMembers.map((m, idx) => {
-        const share = calc.memberShares[m.id] || { baseShare: 0, extraFee: 0, sessionFee: 0, oldDebt: 0, oldDebtLogs: [], totalDue: 0, amountPaid: 0, debtAmount: 0 };
-        const genderText = m.gender === 'M' ? 'Nam' : 'Nữ';
-        const genderClass = m.gender === 'M' ? 'bg-blue-500/20 text-blue-300' : 'bg-pink-500/20 text-pink-300';
-        const memberPlayDate = m.playDate || state.settings.sessionDate;
-
-        let groupHeaderHtml = '';
-        if (share.debtAmount === 0 && !hasRenderedPaidDivider) {
-          hasRenderedPaidDivider = true;
-          groupHeaderHtml = `
-            <div class="pt-2 pb-1 flex items-center gap-2">
-              <div class="h-px flex-1 bg-emerald-500/30"></div>
-              <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400">✓ Đã thanh toán đủ (${paidCount} người — Xếp cuối)</span>
-              <div class="h-px flex-1 bg-emerald-500/30"></div>
-            </div>
-          `;
-        }
-
-        const debtBadge = share.debtAmount > 0
-          ? `<span class="px-2.5 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-extrabold whitespace-nowrap">
-               Nợ ${formatVND(share.debtAmount)}
-             </span>`
-          : `<span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold whitespace-nowrap">
-               ✓ Đã trả đủ
-             </span>`;
-
-        const dateDebtInfoHtml = share.oldDebt > 0
-          ? `<div class="text-[10px] text-rose-300 bg-rose-500/15 border border-rose-500/35 rounded-lg px-2 py-1 flex items-center justify-between gap-1">
-               <span>📌 Nợ tuần cũ (${share.oldDebtLogs.map(d => d.playDate.split('·')[1]?.trim() || d.playDate).join(', ')}): <strong>+${formatVND(share.oldDebt)}</strong></span>
-               <span class="text-slate-300 whitespace-nowrap">Buổi mới: ${formatVND(share.sessionFee)}</span>
-             </div>`
-          : '';
-
-        const overtimeInfoHtml = share.overtimeFee > 0
-          ? `<div class="text-[10px] text-indigo-200 bg-indigo-500/15 border border-indigo-400/40 rounded-lg px-2 py-1 flex items-center justify-between gap-1">
-               <span>⏱️ Chơi thêm giờ (${share.overtimeDetails.map(d => `${d.startTime}–${d.endTime}`).join(', ')})</span>
-               <strong class="text-indigo-300 font-extrabold whitespace-nowrap">+${formatVND(share.overtimeFee)}</strong>
-             </div>`
-          : share.isEarlyLeaver
-          ? `<div class="text-[10px] text-slate-300 bg-[#090e1f] border border-[#1d2b56] rounded-lg px-2 py-1 flex items-center justify-between gap-1">
-               <span>🏠 Về sớm (Miễn tiền chơi thêm giờ)</span>
-               <strong class="text-emerald-400 font-bold whitespace-nowrap">0đ thêm</strong>
-             </div>`
-          : '';
-
-        if (admin) {
-          return `
-            ${groupHeaderHtml}
-            <div class="p-3 rounded-xl bg-[#0f1730] border ${share.debtAmount > 0 ? 'border-rose-500/40' : 'border-emerald-500/30 opacity-85'} space-y-2">
-              <div class="flex items-center justify-between gap-2">
-                <div class="flex items-center gap-1.5 min-w-0">
-                  <span class="text-xs font-bold text-slate-400">${idx + 1}.</span>
-                  <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${genderClass}">${genderText}</span>
-                  <span class="font-extrabold text-white text-sm truncate">${m.name}</span>
-                </div>
-                <div class="flex items-center gap-1.5 shrink-0">
-                  <span class="text-xs text-slate-300 font-semibold whitespace-nowrap">Tổng đóng: <strong class="text-white font-black text-sm">${formatVND(share.totalDue)}</strong></span>
-                  ${debtBadge}
-                </div>
-              </div>
-
-              <div class="flex items-center justify-between text-[10px] text-slate-400">
-                <span>📅 Ngày đánh: <strong class="text-blue-300">${memberPlayDate}</strong></span>
-                <span>${m.type === 'fixed' ? 'Cố định' : 'Vãng lai'}</span>
-              </div>
-
-              ${overtimeInfoHtml}
-              ${dateDebtInfoHtml}
-
-              <div class="flex items-center justify-between gap-1.5 pt-2 border-t border-[#1b2852]">
-                <div class="flex items-center gap-1.5 flex-1 min-w-0">
-                  <div class="flex items-center gap-1">
-                    <span class="text-[10px] text-emerald-300 font-bold whitespace-nowrap">Đã trả:</span>
-                    <input
-                      type="number"
-                      inputmode="numeric"
-                      step="5000"
-                      min="0"
-                      value="${share.amountPaid}"
-                      onchange="updateMemberAmountPaid('${m.id}', this.value)"
-                      class="w-20 px-2 py-1 rounded-lg bg-[#090e1f] border border-emerald-500/40 text-xs font-extrabold text-emerald-300 focus:outline-none"
-                    />
-                  </div>
-                  <div class="flex items-center gap-1">
-                    <span class="text-[10px] text-amber-300 font-semibold whitespace-nowrap">+Phụ:</span>
-                    <input
-                      type="number"
-                      inputmode="numeric"
-                      step="5000"
-                      min="0"
-                      value="${m.extraFee || 0}"
-                      onchange="updateMemberExtraFee('${m.id}', this.value)"
-                      class="w-14 px-1.5 py-1 rounded-lg bg-[#090e1f] border border-[#243569] text-xs font-bold text-amber-300 focus:outline-none"
-                    />
-                  </div>
-                </div>
-                <div class="flex items-center gap-1 shrink-0">
-                  <button onclick="setMemberFullPaid('${m.id}')" class="px-2 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold whitespace-nowrap">
-                    ✓ Đủ
-                  </button>
-                  <button onclick="recordMemberDebtByDate('${m.id}')" class="px-2 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-[11px] font-bold whitespace-nowrap" title="Ghi nợ theo ngày đánh">
-                    📅 Ghi nợ
-                  </button>
-                </div>
-              </div>
-            </div>
-          `;
-        }
-
-        // User Read-Only Mobile Card
-        return `
-          ${groupHeaderHtml}
-          <div class="p-3 rounded-xl bg-[#0f1730] border ${share.debtAmount > 0 ? 'border-rose-500/35' : 'border-emerald-500/30 opacity-85'} space-y-1.5">
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-1.5 min-w-0">
-                <span class="text-xs font-bold text-slate-400">${idx + 1}.</span>
-                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${genderClass}">${genderText}</span>
-                <span class="font-extrabold text-white text-sm truncate">${m.name}</span>
-              </div>
-              ${debtBadge}
-            </div>
-            <div class="text-[10px] text-slate-400">📅 Ngày đánh: <strong class="text-blue-300">${memberPlayDate}</strong></div>
-            ${overtimeInfoHtml}
-            ${dateDebtInfoHtml}
-            <div class="grid grid-cols-3 gap-1.5 pt-1.5 border-t border-[#1b2852] text-[11px]">
-              <div class="bg-[#090e1f] rounded-lg px-2 py-1">
-                <span class="text-slate-400 block text-[10px]">Phải trả</span>
-                <strong class="text-white font-black text-xs">${formatVND(share.totalDue)}</strong>
-              </div>
-              <div class="bg-[#090e1f] rounded-lg px-2 py-1">
-                <span class="text-slate-400 block text-[10px]">Đã trả</span>
-                <strong class="text-emerald-400 font-extrabold text-xs">${formatVND(share.amountPaid)}</strong>
-              </div>
-              <div class="bg-[#090e1f] rounded-lg px-2 py-1">
-                <span class="text-slate-400 block text-[10px]">Tiền nợ</span>
-                <strong class="${share.debtAmount > 0 ? 'text-rose-400' : 'text-emerald-400'} font-extrabold text-xs">${formatVND(share.debtAmount)}</strong>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      mobileCostList.innerHTML = mobileDebtOnlyHtml + activeCardsHtml;
-    }
-  }
-
-  // 2. Render Desktop Full Table (Unpaid First, Paid Last)
-  const tbody = document.getElementById('costMemberBreakdownBody');
-  let hasRenderedDesktopPaidDivider = false;
-  const activeRowsHtml = sortedMembers.map((m, idx) => {
-    const share = calc.memberShares[m.id] || { baseShare: 0, extraFee: 0, sessionFee: 0, oldDebt: 0, oldDebtLogs: [], totalDue: 0, amountPaid: 0, debtAmount: 0 };
-    const memberPlayDate = m.playDate || state.settings.sessionDate;
-
-    let dividerRowHtml = '';
-    if (share.debtAmount === 0 && !hasRenderedDesktopPaidDivider) {
-      hasRenderedDesktopPaidDivider = true;
-      dividerRowHtml = `
-        <tr class="bg-emerald-950/25">
-          <td colspan="${admin ? 8 : 7}" class="py-1.5 px-3 text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider">
-            ✓ Thành viên đã thanh toán đủ (${paidCount} người — Đã xếp xuống cuối bảng)
-          </td>
-        </tr>
       `;
+    } else {
+      const debtOnlyHtml = filteredDebtOnly
+        .map(dm => {
+          const genderText = dm.gender === 'M' ? 'Nam' : 'Nữ';
+          const genderClass = dm.gender === 'M' ? 'bg-blue-500/20 text-blue-300' : 'bg-pink-500/20 text-pink-300';
+          const datesStr = dm.logs.map(l => l.playDate.split('·')[1]?.trim() || l.playDate).join(', ');
+          return `
+            <div class="px-3 py-2.5 rounded-xl bg-[#180d1e] border-l-4 border-l-rose-500 border-y border-r border-rose-500/40 flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                ${
+                  admin
+                    ? `<button type="button" onclick="settleOldDebtForMemberName('${dm.name.replace(/'/g, "\\'")}')" class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg border-2 border-rose-400/70 hover:border-emerald-400 hover:bg-emerald-500/20 flex items-center justify-center text-xs text-rose-300 shrink-0" title="Tick đã thu hết nợ cũ">☐</button>`
+                    : `<span class="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span>`
+                }
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5 min-w-0">
+                    <span class="px-1.5 py-0.5 rounded bg-rose-500/30 text-rose-200 text-[9px] font-black shrink-0">NỢ CŨ</span>
+                    <span class="font-extrabold text-white text-sm truncate">${dm.name}</span>
+                    <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${genderClass}">${genderText}</span>
+                  </div>
+                  <div class="text-[11px] text-rose-300/90 mt-0.5 truncate">📅 Ngày nợ: ${datesStr} (Chưa ĐK tuần mới)</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <div class="text-right">
+                  <div class="text-sm sm:text-base font-black text-rose-400 whitespace-nowrap">${formatVND(dm.totalOldDebt)}</div>
+                  <div class="text-[10px] text-rose-300/80 font-semibold">Nợ cũ</div>
+                </div>
+                ${
+                  admin
+                    ? `<button type="button" onclick="settleOldDebtForMemberName('${dm.name.replace(/'/g, "\\'")}')" class="hidden sm:inline-flex px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold whitespace-nowrap">✓ Thu nợ cũ</button>`
+                    : ''
+                }
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      let hasRenderedPaidDivider = false;
+      const activeRowsHtml = filteredMembers
+        .map((m, idx) => {
+          const share = calc.memberShares[m.id] || {
+            baseShare: 0,
+            extraFee: 0,
+            overtimeFee: 0,
+            overtimeDetails: [],
+            isEarlyLeaver: false,
+            sessionFee: 0,
+            oldDebt: 0,
+            oldDebtLogs: [],
+            totalDue: 0,
+            amountPaid: 0,
+            debtAmount: 0
+          };
+          const isPaid = share.debtAmount === 0;
+          const isDrawerOpen = admin && expandedFinanceEditorId === m.id;
+          const genderText = m.gender === 'M' ? 'Nam' : 'Nữ';
+          const genderClass = m.gender === 'M' ? 'bg-blue-500/20 text-blue-300' : 'bg-pink-500/20 text-pink-300';
+
+          let dividerHtml = '';
+          if (isPaid && !hasRenderedPaidDivider && currentPaymentFilter === 'ALL' && unpaidCount > 0) {
+            hasRenderedPaidDivider = true;
+            dividerHtml = `
+              <div class="pt-3 pb-1 flex items-center gap-2">
+                <div class="h-px flex-1 bg-emerald-500/30"></div>
+                <span class="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-emerald-400">
+                  ✓ Đã đóng tiền (${paidCount} người — Cuối danh sách)
+                </span>
+                <div class="h-px flex-1 bg-emerald-500/30"></div>
+              </div>
+            `;
+          }
+
+          // Tạo 1 dòng chi tiết siêu gọn, KHÔNG lặp lại thông tin nhiều lần
+          const detailParts = [`<span class="text-slate-400">Sân+cầu ${formatShortMoney(share.baseShare)}</span>`];
+          if (share.overtimeFee > 0) {
+            const otRangeTxt = formatOvertimeTimeRangesUnique(share.overtimeDetails);
+            detailParts.push(
+              `<span class="text-indigo-300 font-bold">⏱️ +${formatShortMoney(share.overtimeFee)}${otRangeTxt ? ` (${otRangeTxt})` : ''}</span>`
+            );
+          } else if (share.isEarlyLeaver) {
+            detailParts.push(`<span class="text-slate-400">🏠 Về sớm</span>`);
+          }
+          if (share.extraFee > 0) {
+            detailParts.push(`<span class="text-amber-300 font-bold">+Phụ ${formatShortMoney(share.extraFee)}</span>`);
+          }
+          if (share.oldDebt > 0) {
+            const oldDatesTxt = share.oldDebtLogs.map(d => d.playDate.split('·')[1]?.trim() || d.playDate).join(', ');
+            detailParts.push(`<span class="text-rose-300 font-bold">📌 Nợ cũ +${formatShortMoney(share.oldDebt)} (${oldDatesTxt})</span>`);
+          }
+          if (share.amountPaid > 0 && share.debtAmount > 0) {
+            detailParts.push(`<span class="text-emerald-400 font-bold">Đã trả ${formatShortMoney(share.amountPaid)}</span>`);
+          }
+
+          const tickBtnHtml = admin
+            ? `<button
+                 type="button"
+                 onclick="toggleMemberQuickPaid('${m.id}')"
+                 class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center shrink-0 transition-all border-2 ${
+                   isPaid
+                     ? 'bg-emerald-500 border-emerald-400 text-slate-950 font-black text-sm shadow-sm shadow-emerald-500/30'
+                     : 'bg-[#090e1f] border-slate-500 hover:border-emerald-400 hover:bg-emerald-500/15 text-transparent hover:text-emerald-300 text-xs'
+                 }"
+                 title="${isPaid ? 'Đã đóng đủ (Chạm để bỏ tick)' : 'Chạm để tick Đã trả đủ cho ' + m.name}"
+               >✓</button>`
+            : `<span class="w-2.5 h-2.5 rounded-full shrink-0 ${isPaid ? 'bg-emerald-400' : 'bg-rose-400'}"></span>`;
+
+          const drawerHtml = isDrawerOpen
+            ? `<div class="mt-2.5 pt-2.5 border-t border-[#1d2b56] grid grid-cols-2 sm:grid-cols-12 gap-2 items-end">
+                 <div class="sm:col-span-4">
+                   <label class="block text-[10px] text-emerald-300 font-bold mb-1">Số tiền đã trả (đ)</label>
+                   <input
+                     type="number"
+                     inputmode="numeric"
+                     step="5000"
+                     min="0"
+                     value="${share.amountPaid}"
+                     onchange="updateMemberAmountPaid('${m.id}', this.value)"
+                     class="w-full px-2.5 py-1.5 rounded-lg bg-[#090e1f] border border-emerald-500/40 text-xs font-extrabold text-emerald-300 focus:outline-none focus:border-emerald-400"
+                   />
+                 </div>
+                 <div class="sm:col-span-3">
+                   <label class="block text-[10px] text-amber-300 font-bold mb-1">Phụ phí riêng (đ)</label>
+                   <input
+                     type="number"
+                     inputmode="numeric"
+                     step="5000"
+                     min="0"
+                     value="${m.extraFee || 0}"
+                     onchange="updateMemberExtraFee('${m.id}', this.value)"
+                     class="w-full px-2.5 py-1.5 rounded-lg bg-[#090e1f] border border-[#243569] text-xs font-bold text-amber-300 focus:outline-none"
+                   />
+                 </div>
+                 <div class="col-span-2 sm:col-span-5 flex items-center justify-end gap-1.5">
+                   <button type="button" onclick="setMemberFullPaid('${m.id}')" class="px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold whitespace-nowrap">
+                     ✓ Trả đủ
+                   </button>
+                   <button type="button" onclick="recordMemberDebtByDate('${m.id}')" class="px-2.5 py-1.5 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-[11px] font-bold whitespace-nowrap">
+                     📅 Ghi nợ ngày
+                   </button>
+                   <button type="button" onclick="toggleMemberFinanceDrawer('${m.id}')" class="px-2 py-1.5 rounded-lg bg-[#162247] text-slate-300 text-[11px] font-bold">
+                     Đóng
+                   </button>
+                 </div>
+               </div>`
+            : '';
+
+          return `
+            ${dividerHtml}
+            <div class="px-3 py-2.5 rounded-xl border-l-4 border-y border-r transition-colors ${
+              isPaid
+                ? 'bg-[#0a1324] border-l-emerald-500 border-emerald-500/20 opacity-85'
+                : 'bg-[#0f1730] border-l-rose-500 border-[#1f2e5c] hover:border-blue-500/40'
+            }">
+              <div class="flex items-center justify-between gap-2">
+                <!-- TRÁI: Ô TICK + SỐ THỨ TỰ + TÊN (LUÔN THẤY TÊN KHI BẤM TICK) -->
+                <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                  ${tickBtnHtml}
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5 min-w-0">
+                      <span class="text-xs font-bold text-slate-500 shrink-0">${idx + 1}.</span>
+                      <span class="font-extrabold text-sm sm:text-[15px] ${isPaid ? 'text-emerald-200' : 'text-white'} truncate">${m.name}</span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${genderClass}">${genderText}</span>
+                    </div>
+                    <div class="text-[11px] flex items-center gap-1.5 flex-wrap mt-0.5 leading-snug">
+                      ${detailParts.join(' <span class="text-slate-600">·</span> ')}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- PHẢI: SỐ TIỀN NỢ / ĐÃ ĐÓNG + NÚT TRẢ ĐỦ (PC) + NÚT SỬA NHANH -->
+                <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                  <div class="text-right">
+                    ${
+                      isPaid
+                        ? `<div class="text-sm sm:text-base font-extrabold text-emerald-400 whitespace-nowrap">✓ ${formatVND(share.amountPaid)}</div>
+                           <div class="text-[10px] text-emerald-300/80 font-semibold">Đã đóng</div>`
+                        : `<div class="text-sm sm:text-base font-black text-rose-400 whitespace-nowrap">${formatVND(share.debtAmount)}</div>
+                           <div class="text-[10px] text-slate-400 font-semibold">${share.amountPaid > 0 ? `Tổng ${formatShortMoney(share.totalDue)}` : 'Còn nợ'}</div>`
+                    }
+                  </div>
+                  ${
+                    admin
+                      ? `${
+                          !isPaid
+                            ? `<button type="button" onclick="setMemberFullPaid('${m.id}')" class="hidden sm:inline-flex px-2.5 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold whitespace-nowrap">✓ Trả đủ</button>`
+                            : `<button type="button" onclick="toggleMemberQuickPaid('${m.id}')" class="hidden sm:inline-flex px-2 py-1.5 rounded-lg bg-[#142044] hover:bg-[#1d2e5f] border border-[#293f80] text-slate-300 text-[11px] font-bold whitespace-nowrap">Hoàn tác</button>`
+                        }
+                        <button
+                          type="button"
+                          onclick="toggleMemberFinanceDrawer('${m.id}')"
+                          class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center border text-xs transition-colors ${
+                            isDrawerOpen
+                              ? 'bg-blue-600/30 border-blue-400 text-white'
+                              : 'bg-[#090e1f] border-[#243569] text-slate-300 hover:border-blue-400 hover:text-white'
+                          }"
+                          title="Nhập số tiền trả một phần, phụ phí riêng hoặc ghi sổ nợ ngày"
+                        >✏️</button>`
+                      : ''
+                  }
+                </div>
+              </div>
+              ${drawerHtml}
+            </div>
+          `;
+        })
+        .join('');
+
+      unifiedListEl.innerHTML = debtOnlyHtml + activeRowsHtml;
     }
-
-    const extraFeeCell = admin
-      ? `<input
-          type="number"
-          inputmode="numeric"
-          step="5000"
-          min="0"
-          value="${m.extraFee || 0}"
-          onchange="updateMemberExtraFee('${m.id}', this.value)"
-          class="w-20 px-2 py-1 rounded-lg bg-[#090e1f] border border-[#243569] text-xs font-bold text-amber-300"
-        />`
-      : `<span class="text-xs font-semibold text-amber-300">${formatVND(share.extraFee)}</span>`;
-
-    const amountPaidCell = admin
-      ? `<input
-          type="number"
-          inputmode="numeric"
-          step="5000"
-          min="0"
-          value="${share.amountPaid}"
-          onchange="updateMemberAmountPaid('${m.id}', this.value)"
-          class="w-24 px-2.5 py-1.5 rounded-lg bg-[#090e1f] border border-emerald-500/40 text-xs font-extrabold text-emerald-300 focus:outline-none focus:border-emerald-400"
-        />`
-      : `<span class="font-extrabold text-emerald-400">${formatVND(share.amountPaid)}</span>`;
-
-    const debtCell = share.debtAmount > 0
-      ? `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs font-extrabold whitespace-nowrap">
-           Nợ ${formatVND(share.debtAmount)}
-         </span>`
-      : `<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold whitespace-nowrap">
-           0đ (Đã đủ)
-         </span>`;
-
-    const adminActionCell = admin
-      ? `<td class="py-3 px-2.5 text-right whitespace-nowrap">
-           <button onclick="setMemberFullPaid('${m.id}')" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold mr-1 whitespace-nowrap">
-             Trả đủ
-           </button>
-           <button onclick="recordMemberDebtByDate('${m.id}')" class="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 text-[11px] font-bold whitespace-nowrap" title="Ghi nợ thành viên này theo ngày đánh (${memberPlayDate})">
-             📅 Ghi nợ ngày
-           </button>
-         </td>`
-      : '';
-
-    const oldDebtSubText = share.oldDebt > 0
-      ? `<div class="mt-0.5 text-[10px] font-extrabold text-rose-300">📌 +${formatVND(share.oldDebt)} nợ tuần cũ (${share.oldDebtLogs.map(d => d.playDate.split('·')[1]?.trim() || d.playDate).join(', ')})</div>`
-      : '';
-
-    const overtimeSubText = share.overtimeFee > 0
-      ? `<div class="mt-0.5 text-[10px] font-extrabold text-indigo-300">⏱️ +${formatVND(share.overtimeFee)} chơi thêm (${share.overtimeDetails.map(d => `${d.startTime}–${d.endTime}`).join(', ')})</div>`
-      : share.isEarlyLeaver
-      ? `<div class="mt-0.5 text-[10px] text-slate-400">🏠 Về sớm (không tính thêm giờ)</div>`
-      : '';
-
-    return `
-      ${dividerRowHtml}
-      <tr class="hover:bg-[#0f1730]/60 transition-colors ${share.debtAmount === 0 ? 'opacity-80' : ''}">
-        <td class="py-3 px-2.5 text-xs font-bold text-slate-400 whitespace-nowrap">${idx + 1}</td>
-        <td class="py-3 px-2.5 whitespace-nowrap">
-          <div class="font-bold text-white flex items-center gap-1.5">
-            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${m.gender === 'M' ? 'bg-blue-500/20 text-blue-300' : 'bg-pink-500/20 text-pink-300'}">${m.gender === 'M' ? 'Nam' : 'Nữ'}</span>
-            <span>${m.name}</span>
-          </div>
-          <div class="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
-            <span>${m.type === 'fixed' ? 'Cố định' : 'Vãng lai'}</span>
-            <span>·</span>
-            <span class="text-blue-300 font-semibold">📅 ${memberPlayDate}</span>
-          </div>
-          ${overtimeSubText}
-          ${oldDebtSubText}
-        </td>
-        <td class="py-3 px-2.5 whitespace-nowrap">
-          <div class="font-semibold text-slate-200">${formatVND(share.baseShare)}</div>
-          ${share.overtimeFee > 0 ? `<div class="text-[10px] text-indigo-300 font-bold">+${formatVND(share.overtimeFee)} thêm giờ</div>` : ''}
-        </td>
-        <td class="py-3 px-2.5 whitespace-nowrap">${extraFeeCell}</td>
-        <td class="py-3 px-2.5 whitespace-nowrap">
-          <div class="font-black text-white text-sm">${formatVND(share.totalDue)}</div>
-          ${share.overtimeFee > 0 ? `<div class="text-[10px] text-indigo-300 font-bold">Gồm ${formatVND(share.overtimeFee)} thêm giờ</div>` : ''}
-          ${share.oldDebt > 0 ? `<div class="text-[10px] text-rose-300 font-bold">Gồm ${formatVND(share.oldDebt)} nợ cũ</div>` : ''}
-        </td>
-        <td class="py-3 px-2.5 whitespace-nowrap">${amountPaidCell}</td>
-        <td class="py-3 px-2.5 whitespace-nowrap">${debtCell}</td>
-        ${adminActionCell}
-      </tr>
-    `;
-  }).join('');
-
-  tbody.innerHTML = desktopDebtOnlyHtml + activeRowsHtml;
+  }
 
   // 3. Render Sổ Ghi Nợ Theo Ngày Đánh
   renderDebtByDateSection();

@@ -128,10 +128,10 @@
   </header>
 
   <!-- MAIN CONTAINER -->
-  <main class="relative z-10 max-w-[1280px] mx-auto px-4 sm:px-6 mt-5 space-y-6">
+  <main class="relative z-10 max-w-[1280px] mx-auto px-3 sm:px-6 mt-3 sm:mt-5 space-y-4 sm:space-y-6">
 
-    <!-- HERO BANNER -->
-    <section class="hero-card relative rounded-[28px] overflow-hidden border border-[#20336b] shadow-2xl">
+    <!-- HERO BANNER (Ẩn trên điện thoại để vào thẳng màn hình theo dõi) -->
+    <section class="hero-card hidden sm:block relative rounded-[28px] overflow-hidden border border-[#20336b] shadow-2xl">
       <svg class="court-lines-svg absolute right-0 bottom-0 w-[68%] h-[88%] pointer-events-none opacity-25" viewBox="0 0 800 450" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M120 110 L680 75 L790 420 L40 440 Z" stroke="#60A5FA" stroke-width="1.5"/>
         <path d="M155 108 L710 430" stroke="#60A5FA" stroke-width="1"/>
@@ -266,31 +266,78 @@
     </section>
 
     <!-- ========================================== -->
-    <!-- TAB 1: OVERVIEW (BENTO GRID)               -->
+    <!-- TAB 1: OVERVIEW (BENTO GRID — ƯU TIÊN THEO DÕI NỢ & ĐÓNG TIỀN TRÊN ĐIỆN THOẠI) -->
     <!-- ========================================== -->
-    <div id="tab-overview" class="tab-panel space-y-6">
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+    <div id="tab-overview" class="tab-panel space-y-4 sm:space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
         
-        <div class="lg:col-span-6 bg-[#0b1021] border border-[#192342] rounded-[24px] p-6 flex flex-col justify-between">
+        <!-- MÀN HÌNH CHÍNH ĐIỆN THOẠI (ORDER-1): THEO DÕI ĐÃ ĐÓNG / CÒN NỢ -->
+        <div class="order-1 lg:order-3 lg:col-span-5 bg-[#0b1021] border border-blue-500/30 rounded-2xl sm:rounded-[24px] p-3.5 sm:p-5 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-2.5">
+              <div>
+                <h2 class="text-sm sm:text-base font-extrabold text-white">💰 Theo dõi Đã đóng / Còn nợ</h2>
+                <p class="text-[11px] text-slate-400">Chưa đóng xếp đầu · Đã đóng xếp cuối.</p>
+              </div>
+              <button onclick="switchTab('costs')" class="px-2.5 py-1 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 text-[11px] font-bold text-blue-300 whitespace-nowrap shrink-0">
+                Chi tiết chi phí →
+              </button>
+            </div>
+
+            <div class="grid grid-cols-3 gap-1.5 mb-2.5">
+              <div class="rounded-xl bg-[#0f1730] border border-[#1d2b56] px-2.5 py-1.5">
+                <span class="text-[10px] text-slate-400 block">Mỗi người</span>
+                <strong id="overviewQuickAvg" class="text-xs sm:text-sm font-black text-blue-300">0đ</strong>
+              </div>
+              <div class="rounded-xl bg-[#0f1730] border border-emerald-500/30 px-2.5 py-1.5">
+                <span class="text-[10px] text-emerald-300 block">Đã thu</span>
+                <strong id="overviewQuickCollected" class="text-xs sm:text-sm font-black text-emerald-400">0đ</strong>
+              </div>
+              <div class="rounded-xl bg-[#0f1730] border border-rose-500/40 px-2.5 py-1.5">
+                <span class="text-[10px] text-rose-300 block">Còn nợ</span>
+                <strong id="overviewQuickDebt" class="text-xs sm:text-sm font-black text-rose-400">0đ</strong>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-1.5 mb-2.5">
+              <div id="overviewPaymentFilterBar" class="flex items-center gap-1 flex-wrap"></div>
+              <input
+                type="text"
+                id="overviewMemberSearch"
+                placeholder="🔍 Tìm tên..."
+                oninput="handleQuickMemberSearch(this.value)"
+                class="flex-1 min-w-[110px] px-2.5 py-1 rounded-xl bg-[#090e1f] border border-[#243569] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-400"
+              />
+            </div>
+
+            <div id="overviewMemberList" class="space-y-1.5 max-h-[58vh] lg:max-h-[420px] overflow-y-auto pr-0.5 custom-scrollbar"></div>
+          </div>
+
+          <button onclick="openQuickRegisterModal()" class="w-full mt-3 py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-xs font-bold text-blue-300 transition-colors">
+            + Đăng ký tên tham gia
+          </button>
+        </div>
+
+        <div class="order-2 lg:order-1 lg:col-span-4 bg-[#0b1021] border border-[#192342] rounded-2xl sm:rounded-[24px] p-4 sm:p-6 flex flex-col justify-between">
           <div>
             <div class="flex items-center justify-between mb-4">
               <span class="text-sm font-bold text-slate-200">Trận đấu tâm điểm / Tiếp theo</span>
               <span class="text-xs font-medium text-slate-400" id="overviewFeaturedMeta">Sân 1 · Cuối tuần</span>
             </div>
 
-            <div id="overviewFeaturedMatchBox" class="bg-[#0f162e] border border-[#1c2952] rounded-2xl p-6 my-2"></div>
+            <div id="overviewFeaturedMatchBox" class="bg-[#0f162e] border border-[#1c2952] rounded-2xl p-4 sm:p-5 my-2"></div>
           </div>
 
           <div class="mt-4 pt-4 border-t border-[#182240]">
             <div class="flex items-center justify-between mb-3">
-              <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Danh sách trận trong tuần (Chạm 21 điểm)</span>
-              <button onclick="switchTab('matches')" class="text-xs font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-4">Nhập tỉ số & Xem tất cả →</button>
+              <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Danh sách trận (Chạm 21đ)</span>
+              <button onclick="switchTab('matches')" class="text-xs font-semibold text-blue-400 hover:text-blue-300 underline underline-offset-4">Nhập tỉ số &amp; Xem tất cả →</button>
             </div>
             <div id="overviewMatchListMini" class="space-y-2"></div>
           </div>
         </div>
 
-        <div class="lg:col-span-3 bg-[#0b1021] border border-[#192342] rounded-[24px] p-6 flex flex-col justify-between">
+        <div class="order-3 lg:order-2 lg:col-span-3 bg-[#0b1021] border border-[#192342] rounded-2xl sm:rounded-[24px] p-4 sm:p-6 flex flex-col justify-between">
           <div>
             <div class="flex items-center justify-between mb-5">
               <span class="text-sm font-bold text-slate-200">Tiến độ buổi đánh</span>
@@ -298,8 +345,8 @@
             </div>
 
             <div class="flex items-center gap-5 my-4">
-              <div class="relative w-24 h-24 shrink-0">
-                <svg class="w-24 h-24 -rotate-90" viewBox="0 0 100 100">
+              <div class="relative w-20 h-20 sm:w-24 sm:h-24 shrink-0">
+                <svg class="w-full h-full -rotate-90" viewBox="0 0 100 100">
                   <circle cx="50" cy="50" r="40" stroke="#182342" stroke-width="10" fill="none" />
                   <circle id="overviewProgressCircle" cx="50" cy="50" r="40" stroke="#3b82f6" stroke-width="10" stroke-linecap="round" fill="none" stroke-dasharray="251.2" stroke-dashoffset="180" class="transition-all duration-700" />
                 </svg>
@@ -339,21 +386,6 @@
               <span id="overviewDebtTotal">0đ</span>
             </div>
           </div>
-        </div>
-
-        <div class="lg:col-span-3 bg-[#0b1021] border border-[#192342] rounded-[24px] p-6 flex flex-col justify-between">
-          <div>
-            <div class="flex items-center justify-between mb-4">
-              <span class="text-sm font-bold text-slate-200">Thành viên tuần này</span>
-              <button onclick="switchTab('register')" class="text-xs font-semibold text-slate-300 hover:text-white underline underline-offset-4">Đăng ký</button>
-            </div>
-
-            <div id="overviewMemberList" class="space-y-2.5 max-h-[310px] overflow-y-auto pr-1 custom-scrollbar"></div>
-          </div>
-
-          <button onclick="openQuickRegisterModal()" class="w-full mt-4 py-2.5 rounded-xl bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 text-xs font-bold text-blue-300 transition-colors">
-            + Đăng ký tên tham gia
-          </button>
         </div>
 
       </div>
@@ -573,43 +605,34 @@
         </div>
       </div>
 
-      <div class="bg-[#0b1021] border border-[#192342] rounded-2xl sm:rounded-[24px] p-3.5 sm:p-6">
+      <div class="bg-[#0b1021] border border-[#192342] rounded-2xl sm:rounded-[24px] p-3.5 sm:p-5">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
           <div>
-            <h3 class="text-sm sm:text-base font-extrabold text-white">Danh sách Số tiền phải trả · Đã trả · Tiền nợ</h3>
+            <h3 class="text-sm sm:text-base font-extrabold text-white">💰 Danh sách Đóng tiền &amp; Công nợ</h3>
             <p class="text-[11px] sm:text-xs text-slate-400" id="userCostBreakdownMini">Sân + Cầu + Phụ phí</p>
           </div>
           <span class="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 text-[10px] sm:text-xs font-semibold">
-            🔒 Chưa trả xếp đầu · Đã trả xếp cuối
+            🔒 Công khai minh bạch
           </span>
         </div>
 
-        <!-- Thanh trạng thái sắp xếp Chưa trả (đầu) / Đã trả (cuối) -->
-        <div id="costSortStatusBanner" class="mb-2.5 flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-xl bg-[#0f1730] border border-[#1f2e5c] text-[11px]"></div>
-
         <!-- Chi tiết các sân theo khung giờ & Ca chơi thêm giờ (Công khai cho thành viên) -->
-        <div id="userCourtAndOvertimeSummary" class="mb-3 space-y-2"></div>
+        <div id="userCourtAndOvertimeSummary" class="mb-2.5 space-y-2"></div>
 
-        <!-- GIAO DIỆN ĐIỆN THOẠI (HIỂN THỊ TRỰC TIẾP PHẢI TRẢ & TIỀN NỢ, KHÔNG CẦN KÉO NGANG) -->
-        <div id="costMemberMobileList" class="sm:hidden space-y-2"></div>
-
-        <!-- GIAO DIỆN MÁY TÍNH / TABLET -->
-        <div class="hidden sm:block overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
-          <table class="w-full min-w-[600px] text-left border-collapse">
-            <thead>
-              <tr class="border-b border-[#1b2749] text-[11px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">
-                <th class="py-3 px-2.5">#</th>
-                <th class="py-3 px-2.5">Thành viên & Ngày đánh</th>
-                <th class="py-3 px-2.5">Tiền sân+cầu</th>
-                <th class="py-3 px-2.5">Phụ phí</th>
-                <th class="py-3 px-2.5">Tổng phải đóng</th>
-                <th class="py-3 px-2.5 text-emerald-300">Số tiền đã trả</th>
-                <th class="py-3 px-2.5 text-rose-300">Tiền nợ</th>
-              </tr>
-            </thead>
-            <tbody id="costMemberBreakdownBody" class="divide-y divide-[#15203d] text-sm"></tbody>
-          </table>
+        <!-- Thanh lọc Tất cả / Còn nợ / Đã đóng + Ô tìm tên nhanh -->
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-[#0f1730] border border-[#1f2e5c]">
+          <div id="costSortStatusBanner" class="flex flex-wrap items-center gap-1.5 text-[11px]"></div>
+          <input
+            type="text"
+            id="costMemberSearch"
+            placeholder="🔍 Tìm tên bạn..."
+            oninput="handleQuickMemberSearch(this.value)"
+            class="w-full sm:w-44 px-2.5 py-1.5 rounded-xl bg-[#090e1f] border border-[#243569] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-400"
+          />
         </div>
+
+        <!-- DANH SÁCH THỐNG NHẤT KHÔNG KÉO NGANG TRÊN MỌI THIẾT BỊ -->
+        <div id="costMemberUnifiedList" class="space-y-1.5"></div>
       </div>
 
       <!-- SỔ GHI NỢ THEO NGÀY ĐÁNH (CHẾ ĐỘ XEM CÔNG KHAI CHO THÀNH VIÊN) -->
@@ -716,6 +739,6 @@
     <span id="toastMessage">Đã cập nhật!</span>
   </div>
 
-  <script src="app.js?v=20261121_v4"></script>
+  <script src="app.js?v=20261121_v5"></script>
 </body>
 </html>
